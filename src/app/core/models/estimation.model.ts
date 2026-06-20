@@ -1,8 +1,12 @@
 /* ── Estimation & Report Models ─────────────────────────────────── */
 
+import { CurrentArchitecture, ProjectType } from './project.model';
+
 export interface Estimation {
   id: string;
   projectId: string;
+  projectName: string;
+  projectType: ProjectType;
   feasibility: FeasibilityResult;
   costBreakdown: CostBreakdown;
   tokenProjection: TokenProjection;
@@ -11,6 +15,21 @@ export interface Estimation {
   reportMarkdown: string;
   status: 'generating' | 'complete' | 'error';
   generatedAt: string;
+  /** Present only for enhancement-mode estimates (existing-app analysis). */
+  repoContext?: RepoContext;
+}
+
+/** Snapshot of the analyzed repository carried into the report. */
+export interface RepoContext {
+  fullName: string;
+  htmlUrl: string;
+  branch: string;
+  primaryLanguage: string;
+  stars: number;
+  fileCount: number;
+  architecture: CurrentArchitecture;
+  manifestsFound: string[];
+  topics: string[];
 }
 
 /* ── Feasibility ──── */

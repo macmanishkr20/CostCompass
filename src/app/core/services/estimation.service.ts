@@ -17,6 +17,7 @@ import {
   ModelTokenBreakdown,
   Recommendation,
   RecommendationArchetype,
+  RepoContext,
   TokenProjection,
   UseCaseAnalysis,
 } from '../models/estimation.model';
@@ -157,6 +158,8 @@ export class EstimationService {
     return {
       id,
       projectId: input.projectName,
+      projectName: input.projectName,
+      projectType: input.projectType,
       feasibility,
       costBreakdown,
       tokenProjection,
@@ -165,6 +168,24 @@ export class EstimationService {
       reportMarkdown: this.composeMarkdown(input, feasibility, costBreakdown),
       status: 'complete',
       generatedAt,
+      repoContext: this.buildRepoContext(input),
+    };
+  }
+
+  /** Builds the report-facing repo snapshot for enhancement-mode estimates. */
+  private buildRepoContext(input: ProjectInput): RepoContext | undefined {
+    if (input.projectType !== 'enhancement' || !input.currentArchitecture) return undefined;
+    const a = input.currentArchitecture;
+    return {
+      fullName: input.repoFullName ?? input.repoUrl ?? input.projectName,
+      htmlUrl: input.repoUrl ?? '',
+      branch: input.repoBranch ?? 'main',
+      primaryLanguage: a.language,
+      stars: input.repoStars ?? 0,
+      fileCount: input.repoFileCount ?? 0,
+      architecture: a,
+      manifestsFound: input.repoManifests ?? [],
+      topics: input.repoTopics ?? [],
     };
   }
 
@@ -295,6 +316,18 @@ export class EstimationService {
         category: 'AI integration & evaluation',
         hours: round(aiIntegrationHours),
         cost: round(aiIntegrationHours * DEV_HOURLY_RATE),
+      });
+    }
+    // Enhancement mode: integrating into a live codebase (wiring, API/auth
+    // alignment, regression-safe rollout) is real work the greenfield path
+    // doesn't have. Kept as its own line so we never double-count features.
+    if (input.projectType === 'enhancement') {
+      const framework = input.currentArchitecture?.framework || 'existing app';
+      const integrationHours = round(40 + useCases.length * 24);
+      featureBreakdown.push({
+        category: `Integrate with existing ${framework}`,
+        hours: integrationHours,
+        cost: round(integrationHours * DEV_HOURLY_RATE),
       });
     }
     const totalDevHours = featureBreakdown.reduce((s, b) => s + b.hours, 0);

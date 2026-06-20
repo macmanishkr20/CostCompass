@@ -1,0 +1,282 @@
+<div class="wizard">
+  <!-- ── Stepper ── -->
+  <ol class="stepper">
+    @for (s of steps; track s.key; let i = $index) {
+      <li
+        class="stepper-item"
+        [class.active]="i === step()"
+        [class.done]="i < step()"
+        (click)="goTo(i)"
+      >
+        <span class="stepper-dot">{{ i < step() ? '✓' : i + 1 }}</span>
+        <span class="stepper-label">{{ s.label }}</span>
+      </li>
+    }
+  </ol>
+
+  <form class="card wizard-card" [formGroup]="form" (ngSubmit)="submit()">
+    @switch (step()) {
+      <!-- ── Step 0: Connect ── -->
+      @case (0) {
+        <div class="panel">
+          <h3>Connect a GitHub repository</h3>
+          <p class="panel-hint">
+            We read the repo over the GitHub API — the file tree plus manifest files only.
+            Nothing is cloned and your token is never stored.
+          </p>
+
+          <div class="input-group">
+            <label>Repository</label>
+            <input
+              class="input"
+              formControlName="repoUrl"
+              placeholder="owner/repo  or  https://github.com/owner/repo"
+              (keydown.enter)="$event.preventDefault(); analyze()"
+            />
+          </div>
+
+          <div class="input-group">
+            <label>
+              Fine-grained access token <span class="muted">(optional — required for private repos)</span>
+            </label>
+            <input
+              class="input"
+              type="password"
+              formControlName="token"
+              autocomplete="off"
+              placeholder="github_pat_… — used for this request only, never saved"
+            />
+            <p class="field-note">
+              Use a <strong>fine-grained PAT</strong> scoped to <strong>Contents: read</strong> on the
+              target repo. Public repos work without a token (subject to GitHub's anonymous rate limit).
+            </p>
+          </div>
+
+          @if (analyzeError()) {
+            <div class="analyze-error">{{ analyzeError() }}</div>
+          }
+
+          <div class="connect-actions">
+            <button
+              type="button"
+              class="btn btn-primary btn-lg"
+              (click)="analyze()"
+              [disabled]="analyzing() || !form.controls.repoUrl.value"
+            >
+              {{ analyzing() ? 'Analyzing…' : analysis() ? 'Re-analyze' : 'Analyze repository' }}
+            </button>
+            @if (analysis()) {
+              <span class="connected-tag">✓ Connected to {{ analysis()!.fullName }}</span>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ── Step 1: Review stack ── -->
+      @case (1) {
+        @if (analysis(); as a) {
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>Detected stack</h3>
+                <p class="panel-hint">
+                  Fingerprinted from {{ a.fileCount }} files and {{ a.manifestsFound.length }} manifest(s).
+                  Adjust anything we got wrong — these values drive the integration estimate.
+                </p>
+              </div>
+              <a class="repo-link" [href]="a.htmlUrl" target="_blank" rel="noopener">{{ a.fullName }} ↗</a>
+            </div>
+
+            <div class="repo-meta">
+              <span class="meta-pill">★ {{ a.stars }}</span>
+              <span class="meta-pill">{{ a.primaryLanguage }}</span>
+              <span class="meta-pill">branch: {{ a.branch }}</span>
+              <span class="meta-pill">{{ a.fileCount }} files</span>
+              @if (a.truncated) { <span class="meta-pill warn">tree truncated</span> }
+            </div>
+
+            @if (a.languages.length) {
+              <div class="lang-bars">
+                @for (l of a.languages.slice(0, 5); track l.name) {
+                  <div class="lang-row">
+                    <span class="lang-name">{{ l.name }}</span>
+                    <div class="lang-track"><span [style.width.%]="l.percent"></span></div>
+                    <span class="lang-pct">{{ l.percent }}%</span>
+                  </div>
+                }
+              </div>
+            }
+
+            <div class="grid-2 stack-grid">
+              <div class="input-group">
+                <label>Framework</label>
+                <input class="input" formControlName="framework" />
+              </div>
+              <div class="input-group">
+                <label>Language</label>
+                <input class="input" formControlName="language" />
+              </div>
+              <div class="input-group">
+                <label>Database</label>
+                <input class="input" formControlName="database" />
+              </div>
+              <div class="input-group">
+                <label>API pattern</label>
+                <input class="input" formControlName="apiPattern" />
+              </div>
+              <div class="input-group">
+                <label>Hosting platform</label>
+                <input class="input" formControlName="hostingPlatform" />
+              </div>
+              <div class="input-group">
+                <label>CI / CD</label>
+                <input class="input" formControlName="ciCd" />
+              </div>
+            </div>
+
+            <div class="stack-flags">
+              <span class="flag" [class.on]="a.stack.hasTests">{{ a.stack.hasTests ? '✓' : '✕' }} Tests</span>
+              <span class="flag" [class.on]="a.stack.hasDocker">{{ a.stack.hasDocker ? '✓' : '✕' }} Docker</span>
+              <span class="flag" [class.on]="a.stack.hasDocs">{{ a.stack.hasDocs ? '✓' : '✕' }} Docs</span>
+              @for (pm of a.stack.packageManagers; track pm) {
+                <span class="flag on">{{ pm }}</span>
+              }
+            </div>
+          </div>
+        }
+      }
+
+      <!-- ── Step 2: Enhancement use cases ── -->
+      @case (2) {
+        <div class="panel" formArrayName="aiUseCases">
+          <div class="panel-head">
+            <div>
+              <h3>Enhancement use cases</h3>
+              <p class="panel-hint">
+                Pre-filled from what we detected. Keep, edit, or add the AI capabilities you want to bolt on.
+              </p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="addUseCase()">+ Add use case</button>
+          </div>
+
+          @for (u of aiUseCases.controls; track u; let i = $index) {
+            <div class="repeat-row" [formGroupName]="i">
+              <div class="repeat-main">
+                <input class="input" formControlName="name" placeholder="Use case name" />
+                <select class="select" formControlName="taskType">
+                  @for (o of taskTypeOptions; track o.value) {
+                    <option [value]="o.value">{{ o.label }}</option>
+                  }
+                </select>
+              </div>
+              <div class="repeat-aside">
+                <select class="select" formControlName="priority">
+                  @for (o of priorityOptions; track o.value) {
+                    <option [value]="o.value">{{ o.label }}</option>
+                  }
+                </select>
+                <button type="button" class="btn btn-ghost btn-icon" (click)="removeUseCase(i)" aria-label="Remove">✕</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- ── Step 3: Volume ── -->
+      @case (3) {
+        <div class="panel">
+          <h3>Volume & scale</h3>
+          <p class="panel-hint">Usage drives token cost and the infrastructure you'll add alongside the app.</p>
+
+          <div class="input-group">
+            <label>Scale</label>
+            <select class="select" formControlName="scale">
+              @for (o of scaleOptions; track o.value) {
+                <option [value]="o.value">{{ o.label }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Expected daily users</label>
+              <input class="input" type="number" formControlName="expectedDailyUsers" />
+            </div>
+            <div class="input-group">
+              <label>AI requests / day</label>
+              <input class="input" type="number" formControlName="requestsPerDay" />
+            </div>
+            <div class="input-group">
+              <label>Data volume (GB)</label>
+              <input class="input" type="number" formControlName="dataVolumeGB" />
+            </div>
+            <div class="input-group">
+              <label>Projected growth (% / yr)</label>
+              <input class="input" type="number" formControlName="growthRatePercent" />
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Preferred LLM provider</label>
+              <select class="select" formControlName="preferredLLMProvider">
+                @for (p of providerOptions; track p) {
+                  <option [value]="p">{{ p }}</option>
+                }
+              </select>
+            </div>
+            <div class="input-group">
+              <label>Compliance <span class="muted">(comma-separated)</span></label>
+              <input class="input" formControlName="complianceRequirements" placeholder="e.g. SOC 2, GDPR" />
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ── Step 4: Review ── -->
+      @case (4) {
+        <div class="panel">
+          <h3>Review & generate</h3>
+          <p class="panel-hint">Every figure is computed deterministically against the detected stack.</p>
+
+          <dl class="review">
+            <div><dt>Repository</dt><dd>{{ analysis()?.fullName }}</dd></div>
+            <div><dt>Branch</dt><dd>{{ analysis()?.branch }}</dd></div>
+            <div><dt>Framework</dt><dd>{{ form.value.framework }}</dd></div>
+            <div><dt>Language</dt><dd>{{ form.value.language }}</dd></div>
+            <div><dt>Database</dt><dd>{{ form.value.database }}</dd></div>
+            <div><dt>API pattern</dt><dd>{{ form.value.apiPattern }}</dd></div>
+            <div><dt>Enhancement use cases</dt><dd>{{ aiUseCases.length }}</dd></div>
+            <div><dt>Requests / day</dt><dd>{{ form.value.requestsPerDay }}</dd></div>
+            <div><dt>Scale</dt><dd>{{ form.value.scale }}</dd></div>
+          </dl>
+        </div>
+      }
+    }
+
+    <!-- ── Nav ── -->
+    <div class="wizard-nav">
+      <button type="button" class="btn btn-ghost" (click)="back()" [disabled]="step() === 0">Back</button>
+      @if (!isLastStep()) {
+        <button type="button" class="btn btn-primary" (click)="next()" [disabled]="!stepValid(step())">Continue</button>
+      } @else {
+        <button type="submit" class="btn btn-primary btn-lg" [disabled]="generating()">
+          {{ generating() ? 'Generating…' : 'Generate estimate' }}
+        </button>
+      }
+    </div>
+  </form>
+</div>
+
+<!-- ── Generating overlay ── -->
+@if (generating()) {
+  <div class="gen-overlay">
+    <div class="gen-card card card-glow">
+      <div class="gen-spinner"></div>
+      <h3>Building your estimate</h3>
+      <p class="gen-msg">{{ genMessage() }}</p>
+      <div class="gen-bar"><span [style.width.%]="progress()"></span></div>
+      <span class="gen-pct">{{ progress() }}%</span>
+    </div>
+  </div>
+}

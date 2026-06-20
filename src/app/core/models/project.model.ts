@@ -21,6 +21,12 @@ export interface ProjectInput {
   currentArchitecture?: CurrentArchitecture;
   enhancementScope?: string;
   integrationConstraints?: IntegrationConstraints;
+  // Repo analysis snapshot (carried into the report for enhancement mode)
+  repoFullName?: string;
+  repoStars?: number;
+  repoFileCount?: number;
+  repoManifests?: string[];
+  repoTopics?: string[];
 }
 
 export interface FeatureItem {

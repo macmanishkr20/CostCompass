@@ -6,7 +6,12 @@
       <div class="title-row">
         <div>
           <h2>{{ e.projectId }}</h2>
-          <p class="meta">Generated {{ e.generatedAt | date: 'MMM d, y, h:mm a' }}</p>
+          <p class="meta">
+            @if (e.projectType === 'enhancement') {
+              <span class="mode-chip">Enhancement</span>
+            }
+            Generated {{ e.generatedAt | date: 'MMM d, y, h:mm a' }}
+          </p>
         </div>
         <app-score-badge [score]="e.feasibility.score" />
       </div>
@@ -30,6 +35,44 @@
         </span>
       </div>
     </div>
+
+    <!-- ── Existing application (enhancement mode) ── -->
+    @if (e.repoContext; as repo) {
+      <section class="section">
+        <h4 class="section-title">Existing application</h4>
+        <div class="card detail-card repo-context">
+          <div class="repo-context-head">
+            <a class="repo-name mono" [href]="repo.htmlUrl" target="_blank" rel="noopener">{{ repo.fullName }} ↗</a>
+            <div class="repo-pills">
+              <span class="meta-pill mono">★ {{ repo.stars }}</span>
+              <span class="meta-pill mono">{{ repo.branch }}</span>
+              <span class="meta-pill mono">{{ repo.fileCount }} files</span>
+            </div>
+          </div>
+          <div class="arch-grid">
+            @for (a of [
+              { label: 'Language', value: repo.architecture.language },
+              { label: 'Framework', value: repo.architecture.framework },
+              { label: 'Database', value: repo.architecture.database },
+              { label: 'API pattern', value: repo.architecture.apiPattern },
+              { label: 'Hosting', value: repo.architecture.hostingPlatform },
+              { label: 'CI / CD', value: repo.architecture.ciCd }
+            ]; track a.label) {
+              <div class="arch-cell">
+                <span class="arch-label">{{ a.label }}</span>
+                <span class="arch-value">{{ a.value }}</span>
+              </div>
+            }
+          </div>
+          @if (repo.manifestsFound.length > 0) {
+            <div class="repo-manifests">
+              <span class="dim">Fingerprinted from</span>
+              @for (m of repo.manifestsFound; track m) { <span class="manifest-chip mono">{{ m }}</span> }
+            </div>
+          }
+        </div>
+      </section>
+    }
 
     <!-- ── Feasibility sub-scores ── -->
     <section class="section">
