@@ -1,6 +1,8 @@
 import { inject, Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { from, Observable, of } from 'rxjs';
-import { concatMap, delay, map } from 'rxjs/operators';
+import { catchError, concatMap, delay, map, tap } from 'rxjs/operators';
+import { environment } from '../../../environments/environment';
 import {
   AIUseCase,
   AITaskType,
@@ -114,13 +116,81 @@ function round2(n: number): number {
 @Injectable({ providedIn: 'root' })
 export class EstimationService {
   private readonly mock = inject(MockDataService);
+  private readonly http = inject(HttpClient);
+  private readonly apiBase = environment.apiUrl;
   private readonly store = new Map<string, Estimation>();
 
   /**
-   * Simulated streaming generation: emits progress chunks per pipeline node,
-   * then a final 'complete' chunk carrying the full estimation.
+   * Streaming generation against the deterministic backend. Emits a progress
+   * chunk per pipeline node, then a final 'complete' chunk carrying the full
+   * estimation. If the backend is unreachable, falls back to the in-browser
+   * engine so the app still works offline.
    */
   generate(input: ProjectInput): Observable<EstimationSSEChunk> {
+    return this.streamFromBackend(input).pipe(catchError(() => this.generateLocal(input)));
+  }
+
+  /** POSTs the project to the backend SSE endpoint and parses `data:` chunks. */
+  private streamFromBackend(input: ProjectInput): Observable<EstimationSSEChunk> {
+    return new Observable<EstimationSSEChunk>((subscriber) => {
+      const controller = new AbortController();
+
+      (async () => {
+        try {
+          const res = await fetch(`${this.apiBase}/estimations/stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+            signal: controller.signal,
+          });
+          if (!res.ok || !res.body) throw new Error(`Stream failed: ${res.status}`);
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let sawComplete = false;
+
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            let sep: number;
+            while ((sep = buffer.indexOf('\n\n')) !== -1) {
+              const rawEvent = buffer.slice(0, sep);
+              buffer = buffer.slice(sep + 2);
+              const dataLine = rawEvent.split('\n').find((l) => l.startsWith('data:'));
+              if (!dataLine) continue;
+              const json = dataLine.slice(5).trim();
+              if (!json) continue;
+
+              const chunk = JSON.parse(json) as EstimationSSEChunk;
+              // Cache the final estimation so getById can serve it from memory.
+              if (chunk.status === 'complete' && chunk.data?.estimation) {
+                const est = chunk.data.estimation as Estimation;
+                this.store.set(est.id, est);
+                sawComplete = true;
+              }
+              subscriber.next(chunk);
+            }
+          }
+
+          if (!sawComplete) throw new Error('Stream ended without a complete chunk');
+          subscriber.complete();
+        } catch (err) {
+          subscriber.error(err);
+        }
+      })();
+
+      return () => controller.abort();
+    });
+  }
+
+  /**
+   * In-browser fallback streaming generation: emits progress chunks per
+   * pipeline node, then a final 'complete' chunk carrying the full estimation.
+   */
+  private generateLocal(input: ProjectInput): Observable<EstimationSSEChunk> {
     const id = `est_${Date.now().toString(36)}`;
     const estimation = this.computeEstimation(input, id, new Date().toISOString());
     this.store.set(id, estimation);
@@ -137,13 +207,39 @@ export class EstimationService {
     return from(steps).pipe(concatMap((c, i) => of(c).pipe(delay(i === 0 ? 250 : 550))));
   }
 
-  /** Loads a full estimation; synthesises one from a seed summary if not generated this session. */
+  /**
+   * Loads a full estimation: from this session's cache, else the backend, else
+   * a synthesised report from a seed summary (offline/demo rows).
+   */
   getById(id: string): Observable<Estimation | null> {
     const found = this.store.get(id);
-    if (found) return of(found).pipe(delay(150));
-    return this.mock.getEstimateById(id).pipe(
-      map((summary) => (summary ? this.synthesizeFromSummary(summary) : null)),
+    if (found) return of(found);
+    return this.http.get<Estimation>(`${this.apiBase}/estimations/${id}`).pipe(
+      tap((est) => this.store.set(est.id, est)),
+      map((est) => est as Estimation | null),
+      catchError(() =>
+        this.mock.getEstimateById(id).pipe(
+          map((summary) => (summary ? this.synthesizeFromSummary(summary) : null)),
+        ),
+      ),
     );
+  }
+
+  /** All persisted estimations from the backend (empty list if unreachable). */
+  list(): Observable<Estimation[]> {
+    return this.http
+      .get<Estimation[]>(`${this.apiBase}/estimations`)
+      .pipe(catchError(() => of([] as Estimation[])));
+  }
+
+  /** Download URL for the server-rendered PDF report. */
+  pdfUrl(id: string): string {
+    return `${this.apiBase}/estimations/${id}/export/pdf`;
+  }
+
+  /** Download URL for the server-rendered Excel workbook. */
+  excelUrl(id: string): string {
+    return `${this.apiBase}/estimations/${id}/export/excel`;
   }
 
   /* ── Core deterministic engine ──────────────────────────────────── */
@@ -160,6 +256,7 @@ export class EstimationService {
       projectId: input.projectName,
       projectName: input.projectName,
       projectType: input.projectType,
+      industryDomain: input.industryDomain,
       feasibility,
       costBreakdown,
       tokenProjection,

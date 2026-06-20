@@ -10,10 +10,17 @@
             @if (e.projectType === 'enhancement') {
               <span class="mode-chip">Enhancement</span>
             }
+            @if (e.industryDomain) {
+              <span class="dim">{{ e.industryDomain }} · </span>
+            }
             Generated {{ e.generatedAt | date: 'MMM d, y, h:mm a' }}
           </p>
         </div>
-        <app-score-badge [score]="e.feasibility.score" />
+        <div class="head-actions">
+          <a class="btn btn-secondary btn-sm" [href]="pdfHref(e.id)" target="_blank" rel="noopener" download>↓ PDF</a>
+          <a class="btn btn-secondary btn-sm" [href]="excelHref(e.id)" target="_blank" rel="noopener" download>↓ Excel</a>
+          <app-score-badge [score]="e.feasibility.score" />
+        </div>
       </div>
     </div>
 
@@ -120,6 +127,14 @@
           <span class="cost-sub">/yr · {{ e.costBreakdown.maintenance.monthlyHours }} hrs/mo</span>
         </div>
       </div>
+
+      <!-- Cost composition -->
+      @if (costChart(); as cfg) {
+        <div class="card chart-card">
+          <div class="detail-head">First-year cost composition</div>
+          <div class="chart-wrap"><app-chart-canvas [config]="cfg" /></div>
+        </div>
+      }
 
       <!-- Dev detail -->
       <div class="card detail-card">
@@ -244,6 +259,62 @@
       </div>
     </section>
 
+    <!-- ── ROI projection ── -->
+    @if (e.roiProjection; as roi) {
+      <section class="section">
+        <h4 class="section-title">Return on investment</h4>
+        <div class="roi-grid">
+          <div class="card cost-card">
+            <span class="cost-label">Annual benefit</span>
+            <span class="cost-value mono">{{ roi.annualBenefit | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+            <span class="cost-sub">value of work automated</span>
+          </div>
+          <div class="card cost-card">
+            <span class="cost-label">Payback</span>
+            <span class="cost-value mono">
+              @if (roi.paybackMonths !== null) { {{ roi.paybackMonths }}<span class="unit"> mo</span> }
+              @else { <span class="unit">—</span> }
+            </span>
+            <span class="cost-sub">to recover the build cost</span>
+          </div>
+          <div class="card cost-card">
+            <span class="cost-label">3-year ROI</span>
+            <span class="cost-value mono" [class.pos]="roi.roiPercent >= 0" [class.neg]="roi.roiPercent < 0">{{ roi.roiPercent }}%</span>
+            <span class="cost-sub">net of total 3-yr investment</span>
+          </div>
+          <div class="card cost-card">
+            <span class="cost-label">3-year net value</span>
+            <span class="cost-value mono">{{ roi.threeYearValue | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+            <span class="cost-sub">benefit minus all costs</span>
+          </div>
+        </div>
+
+        @if (roiChart(); as cfg) {
+          <div class="card chart-card">
+            <div class="detail-head">Cumulative net position <span class="dim">(36 months)</span></div>
+            <div class="chart-wrap chart-wrap-wide"><app-chart-canvas [config]="cfg" /></div>
+          </div>
+        }
+
+        @if (roi.valueDrivers.length > 0) {
+          <div class="card detail-card">
+            <div class="detail-head">Value drivers</div>
+            <div class="token-row token-head driver-row">
+              <span>Use case</span><span class="ta-r">Annual calls</span><span class="ta-r">Value / call</span><span class="ta-r">Annual value</span>
+            </div>
+            @for (vd of roi.valueDrivers; track vd.useCase) {
+              <div class="token-row driver-row">
+                <span>{{ vd.useCase }}</span>
+                <span class="ta-r mono dim">{{ vd.annualCalls | number }}</span>
+                <span class="ta-r mono dim">{{ vd.valuePerCall | currency: e.costBreakdown.currency : 'symbol' : '1.2-2' }}</span>
+                <span class="ta-r mono">{{ vd.annualValue | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+              </div>
+            }
+          </div>
+        }
+      </section>
+    }
+
     <!-- ── Use case analysis ── -->
     @if (e.feasibility.useCaseAnalysis.length > 0) {
       <section class="section">
@@ -293,6 +364,14 @@
         }
       </div>
     </section>
+
+    <!-- ── Written summary (server-composed markdown) ── -->
+    @if (renderedReport()) {
+      <section class="section">
+        <h4 class="section-title">Executive summary</h4>
+        <div class="card detail-card markdown-body" [innerHTML]="renderedReport()"></div>
+      </section>
+    }
   } @else if (estimation() === null) {
     <div class="card empty">
       <p class="empty-title">Estimate not found</p>

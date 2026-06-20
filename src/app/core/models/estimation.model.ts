@@ -7,16 +7,44 @@ export interface Estimation {
   projectId: string;
   projectName: string;
   projectType: ProjectType;
+  industryDomain?: string;
   feasibility: FeasibilityResult;
   costBreakdown: CostBreakdown;
   tokenProjection: TokenProjection;
   comparison: AIvsStandardComparison;
+  roiProjection?: ROIProjection;
   recommendations: Recommendation[];
   reportMarkdown: string;
   status: 'generating' | 'complete' | 'error';
   generatedAt: string;
   /** Present only for enhancement-mode estimates (existing-app analysis). */
   repoContext?: RepoContext;
+}
+
+/* ── ROI Projection (deterministic payback & 3-year value) ──── */
+export interface ROIProjection {
+  annualBenefit: number;
+  annualRunCost: number;
+  developmentCost: number;
+  netAnnualBenefit: number;
+  paybackMonths: number | null;
+  threeYearValue: number;
+  roiPercent: number;
+  curve: ROICurvePoint[];
+  valueDrivers: ValueDriver[];
+  assumptions: string[];
+}
+
+export interface ROICurvePoint {
+  month: number;
+  cumulativeNet: number;
+}
+
+export interface ValueDriver {
+  useCase: string;
+  valuePerCall: number;
+  annualCalls: number;
+  annualValue: number;
 }
 
 /** Snapshot of the analyzed repository carried into the report. */
