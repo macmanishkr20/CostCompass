@@ -1,0 +1,244 @@
+<div class="wizard">
+  <!-- ── Stepper ── -->
+  <ol class="stepper">
+    @for (s of steps; track s.key; let i = $index) {
+      <li
+        class="stepper-item"
+        [class.active]="i === step()"
+        [class.done]="i < step()"
+        (click)="goTo(i)"
+      >
+        <span class="stepper-dot">{{ i < step() ? '✓' : i + 1 }}</span>
+        <span class="stepper-label">{{ s.label }}</span>
+      </li>
+    }
+  </ol>
+
+  <form class="card wizard-card" [formGroup]="form" (ngSubmit)="submit()">
+    @switch (step()) {
+      <!-- ── Step 0: Basics ── -->
+      @case (0) {
+        <div class="panel">
+          <h3>Project basics</h3>
+          <p class="panel-hint">Tell us what you're building and for whom.</p>
+
+          <div class="input-group">
+            <label>Project name</label>
+            <input class="input" formControlName="projectName" placeholder="e.g. Customer Support Copilot" />
+          </div>
+
+          <div class="input-group">
+            <label>What is it? What problem does it solve?</label>
+            <textarea class="textarea" formControlName="description"
+              placeholder="Describe the goal, the users, and what success looks like…"></textarea>
+          </div>
+
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Industry / domain</label>
+              <input class="input" formControlName="industryDomain" placeholder="e.g. SaaS / B2B" />
+            </div>
+            <div class="input-group">
+              <label>Target users</label>
+              <input class="input" formControlName="targetUsers" placeholder="e.g. Support agents, end customers" />
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>Scale</label>
+            <select class="select" formControlName="scale">
+              @for (o of scaleOptions; track o.value) {
+                <option [value]="o.value">{{ o.label }}</option>
+              }
+            </select>
+          </div>
+        </div>
+      }
+
+      <!-- ── Step 1: Features ── -->
+      @case (1) {
+        <div class="panel" formArrayName="features">
+          <div class="panel-head">
+            <div>
+              <h3>Features</h3>
+              <p class="panel-hint">List the main capabilities. Flag the ones AI might power.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="addFeature()">+ Add feature</button>
+          </div>
+
+          @for (f of features.controls; track f; let i = $index) {
+            <div class="repeat-row" [formGroupName]="i">
+              <div class="repeat-main">
+                <input class="input" formControlName="name" placeholder="Feature name" />
+                <input class="input" formControlName="description" placeholder="Short description (optional)" />
+              </div>
+              <div class="repeat-aside">
+                <select class="select" formControlName="complexity">
+                  @for (o of complexityOptions; track o.value) {
+                    <option [value]="o.value">{{ o.label }}</option>
+                  }
+                </select>
+                <label class="checkbox">
+                  <input type="checkbox" formControlName="aiCandidate" /> AI candidate
+                </label>
+                <button type="button" class="btn btn-ghost btn-icon" (click)="removeFeature(i)" aria-label="Remove">✕</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- ── Step 2: AI use cases ── -->
+      @case (2) {
+        <div class="panel" formArrayName="aiUseCases">
+          <div class="panel-head">
+            <div>
+              <h3>AI use cases</h3>
+              <p class="panel-hint">Where could AI add value? Pick the task type — it drives the cost model.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="addUseCase()">+ Add use case</button>
+          </div>
+
+          @for (u of aiUseCases.controls; track u; let i = $index) {
+            <div class="repeat-row" [formGroupName]="i">
+              <div class="repeat-main">
+                <input class="input" formControlName="name" placeholder="Use case name" />
+                <select class="select" formControlName="taskType">
+                  @for (o of taskTypeOptions; track o.value) {
+                    <option [value]="o.value">{{ o.label }}</option>
+                  }
+                </select>
+              </div>
+              <div class="repeat-aside">
+                <select class="select" formControlName="priority">
+                  @for (o of priorityOptions; track o.value) {
+                    <option [value]="o.value">{{ o.label }}</option>
+                  }
+                </select>
+                <button type="button" class="btn btn-ghost btn-icon" (click)="removeUseCase(i)" aria-label="Remove">✕</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- ── Step 3: Technical ── -->
+      @case (3) {
+        <div class="panel">
+          <h3>Technical preferences</h3>
+          <p class="panel-hint">Constraints that shape the infrastructure and pricing.</p>
+
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Preferred LLM provider</label>
+              <select class="select" formControlName="preferredLLMProvider">
+                @for (p of providerOptions; track p) {
+                  <option [value]="p">{{ p }}</option>
+                }
+              </select>
+            </div>
+            <div class="input-group">
+              <label>Deployment model</label>
+              <select class="select" formControlName="deploymentModel">
+                @for (o of deploymentOptions; track o.value) {
+                  <option [value]="o.value">{{ o.label }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>Compliance requirements <span class="muted">(comma-separated)</span></label>
+            <input class="input" formControlName="complianceRequirements" placeholder="e.g. SOC 2, GDPR, HIPAA" />
+          </div>
+
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Budget ceiling <span class="muted">(optional)</span></label>
+              <input class="input" type="number" formControlName="budgetCeiling" placeholder="e.g. 150000" />
+            </div>
+            <div class="input-group">
+              <label>Currency</label>
+              <input class="input" formControlName="budgetCurrency" placeholder="USD" />
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- ── Step 4: Volume ── -->
+      @case (4) {
+        <div class="panel">
+          <h3>Volume & scale</h3>
+          <p class="panel-hint">Usage drives token cost and infrastructure sizing.</p>
+
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Expected daily users</label>
+              <input class="input" type="number" formControlName="expectedDailyUsers" />
+            </div>
+            <div class="input-group">
+              <label>AI requests / day</label>
+              <input class="input" type="number" formControlName="requestsPerDay" />
+            </div>
+            <div class="input-group">
+              <label>Data volume (GB)</label>
+              <input class="input" type="number" formControlName="dataVolumeGB" />
+            </div>
+            <div class="input-group">
+              <label>Projected growth (% / yr)</label>
+              <input class="input" type="number" formControlName="growthRatePercent" />
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label>Peak load pattern</label>
+            <input class="input" formControlName="peakLoadPattern" placeholder="e.g. Business hours, spiky, 24/7" />
+          </div>
+        </div>
+      }
+
+      <!-- ── Step 5: Review ── -->
+      @case (5) {
+        <div class="panel">
+          <h3>Review & generate</h3>
+          <p class="panel-hint">Confirm the inputs. We compute every figure deterministically — no invented numbers.</p>
+
+          <dl class="review">
+            <div><dt>Project</dt><dd>{{ form.value.projectName }}</dd></div>
+            <div><dt>Domain</dt><dd>{{ form.value.industryDomain }}</dd></div>
+            <div><dt>Scale</dt><dd>{{ form.value.scale }}</dd></div>
+            <div><dt>Features</dt><dd>{{ features.length }}</dd></div>
+            <div><dt>AI use cases</dt><dd>{{ aiUseCases.length }}</dd></div>
+            <div><dt>Requests / day</dt><dd>{{ form.value.requestsPerDay }}</dd></div>
+            <div><dt>Provider</dt><dd>{{ form.value.preferredLLMProvider }}</dd></div>
+          </dl>
+        </div>
+      }
+    }
+
+    <!-- ── Nav ── -->
+    <div class="wizard-nav">
+      <button type="button" class="btn btn-ghost" (click)="back()" [disabled]="step() === 0">Back</button>
+      @if (!isLastStep()) {
+        <button type="button" class="btn btn-primary" (click)="next()">Continue</button>
+      } @else {
+        <button type="submit" class="btn btn-primary btn-lg" [disabled]="generating()">
+          {{ generating() ? 'Generating…' : 'Generate estimate' }}
+        </button>
+      }
+    </div>
+  </form>
+</div>
+
+<!-- ── Generating overlay ── -->
+@if (generating()) {
+  <div class="gen-overlay">
+    <div class="gen-card card card-glow">
+      <div class="gen-spinner"></div>
+      <h3>Building your estimate</h3>
+      <p class="gen-msg">{{ genMessage() }}</p>
+      <div class="gen-bar"><span [style.width.%]="progress()"></span></div>
+      <span class="gen-pct">{{ progress() }}%</span>
+    </div>
+  </div>
+}

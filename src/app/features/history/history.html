@@ -1,0 +1,87 @@
+<div class="history">
+  <div class="history-head">
+    <div>
+      <h2>Estimate history</h2>
+      <p class="sub">Every feasibility assessment and cost estimate, across all projects.</p>
+    </div>
+    <a class="btn btn-primary" routerLink="/estimate/new">New estimate</a>
+  </div>
+
+  <!-- ── Filters ── -->
+  <div class="filters card">
+    <div class="search">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+      </svg>
+      <input
+        class="search-input"
+        type="search"
+        placeholder="Search by project or domain…"
+        [value]="query()"
+        (input)="onSearch($any($event.target).value)"
+      />
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-label">Type</span>
+      @for (t of types; track t) {
+        <button
+          type="button"
+          class="chip"
+          [class.active]="typeFilter() === t"
+          (click)="typeFilter.set(t)"
+        >{{ filterLabel(t) }}</button>
+      }
+    </div>
+
+    <div class="filter-group">
+      <span class="filter-label">Status</span>
+      @for (s of statuses; track s) {
+        <button
+          type="button"
+          class="chip"
+          [class.active]="statusFilter() === s"
+          (click)="statusFilter.set(s)"
+        >{{ filterLabel(s) }}</button>
+      }
+    </div>
+  </div>
+
+  <!-- ── Results ── -->
+  @if (filtered(); as list) {
+    @if (list.length > 0) {
+      <div class="card table-card">
+        <div class="row head">
+          <span class="col-name">Project</span>
+          <span class="col-rec">Recommendation</span>
+          <span class="col-score">Feasibility</span>
+          <span class="col-cost">Cost</span>
+          <span class="col-status">Status</span>
+          <span class="col-date">Updated</span>
+        </div>
+        @for (e of list; track e.id) {
+          <a class="row" [routerLink]="['/estimate', e.id, 'report']">
+            <span class="col-name">
+              <span class="proj-name">{{ e.projectName }}</span>
+              <span class="proj-meta">{{ projectTypeLabel(e.projectType) }} · {{ e.industryDomain }}</span>
+            </span>
+            <span class="col-rec">{{ e.recommendationLabel }}</span>
+            <span class="col-score"><app-score-badge [score]="e.feasibilityScore" /></span>
+            <span class="col-cost mono">{{ e.totalCostExpected | currency: e.currency : 'symbol' : '1.0-0' }}</span>
+            <span class="col-status"><span class="badge" [class]="statusClass(e.status)">{{ statusLabel(e.status) }}</span></span>
+            <span class="col-date">{{ e.updatedAt | date: 'MMM d, y' }}</span>
+          </a>
+        }
+      </div>
+      <p class="result-count">{{ list.length }} estimate{{ list.length === 1 ? '' : 's' }}</p>
+    } @else {
+      <div class="card empty">
+        <p class="empty-title">No matching estimates</p>
+        <p class="empty-sub">Try clearing a filter or adjusting your search.</p>
+      </div>
+    }
+  } @else {
+    <app-loading-spinner label="Loading history…" />
+  }
+</div>

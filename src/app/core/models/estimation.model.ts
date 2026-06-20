@@ -14,9 +14,36 @@ export interface Estimation {
 }
 
 /* ── Feasibility ──── */
+
+/**
+ * The six recommendation archetypes the scoring engine can land on,
+ * ordered roughly by increasing AI/agentic intensity.
+ */
+export type RecommendationArchetype =
+  | 'traditional' // Build with standard software only — AI not justified
+  | 'traditional_plus_ai' // Mostly traditional, targeted AI features bolted on
+  | 'rag_assistant' // Retrieval-augmented assistant over your data
+  | 'single_agent' // One autonomous agent with tools
+  | 'multi_agent' // Orchestrated multi-agent system
+  | 'hybrid'; // Deliberate mix of traditional services + agents
+
+/**
+ * The three independent sub-scores that drive the recommendation.
+ * Each is 0–100. The engine compares them to pick an archetype.
+ */
+export interface FeasibilitySubScores {
+  aiNecessity: number; // How strongly the problem demands AI/ML at all
+  agenticSuitability: number; // How well it fits autonomous, multi-step agents
+  traditionalSuitability: number; // How well plain deterministic software fits
+}
+
 export interface FeasibilityResult {
-  score: number;                   // 0–100
+  score: number; // 0–100 composite
   rating: 'low' | 'medium' | 'high' | 'excellent';
+  subScores: FeasibilitySubScores;
+  archetype: RecommendationArchetype;
+  archetypeLabel: string; // Human label, e.g. "RAG Assistant"
+  archetypeRationale: string; // Why this archetype over the others
   rationale: string;
   useCaseAnalysis: UseCaseAnalysis[];
   risks: RiskItem[];
@@ -105,6 +132,24 @@ export interface CostRange {
   min: number;
   expected: number;
   max: number;
+}
+
+/* ── Token Projection (usage volume, not cost) ──── */
+export interface TokenProjection {
+  daily: TokenScenario;
+  monthly: TokenScenario;
+  annual: TokenScenario;
+  modelRecommendations: ModelRecommendation[];
+  assumptions: string[];
+}
+
+export interface ModelRecommendation {
+  useCase: string;
+  provider: string;
+  recommendedModel: string;
+  rationale: string;
+  avgInputTokens: number;
+  avgOutputTokens: number;
 }
 
 /* ── AI vs Standard Comparison ──── */

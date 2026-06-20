@@ -1,0 +1,262 @@
+<div class="report">
+  @if (estimation(); as e) {
+    <!-- ── Header ── -->
+    <div class="report-head">
+      <a class="back-link" routerLink="/history">← All estimates</a>
+      <div class="title-row">
+        <div>
+          <h2>{{ e.projectId }}</h2>
+          <p class="meta">Generated {{ e.generatedAt | date: 'MMM d, y, h:mm a' }}</p>
+        </div>
+        <app-score-badge [score]="e.feasibility.score" />
+      </div>
+    </div>
+
+    <!-- ── Recommendation banner ── -->
+    <div class="card card-glow rec-banner">
+      <div class="rec-main">
+        <span class="rec-eyebrow">Recommended approach</span>
+        <h3 class="rec-title">{{ e.feasibility.archetypeLabel }}</h3>
+        <p class="rec-rationale">{{ e.feasibility.rationale }}</p>
+      </div>
+      <div class="rec-cost">
+        <span class="rec-cost-label">Expected first-year cost</span>
+        <span class="rec-cost-value mono">
+          {{ e.costBreakdown.total.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}
+        </span>
+        <span class="rec-cost-range mono">
+          {{ e.costBreakdown.total.min | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }} –
+          {{ e.costBreakdown.total.max | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}
+        </span>
+      </div>
+    </div>
+
+    <!-- ── Feasibility sub-scores ── -->
+    <section class="section">
+      <h4 class="section-title">Feasibility breakdown</h4>
+      <div class="card subscores">
+        @for (s of [
+          { label: 'AI necessity', value: e.feasibility.subScores.aiNecessity, hint: 'How strongly the problem demands AI' },
+          { label: 'Agentic suitability', value: e.feasibility.subScores.agenticSuitability, hint: 'Fit for autonomous, multi-step agents' },
+          { label: 'Traditional suitability', value: e.feasibility.subScores.traditionalSuitability, hint: 'Fit for plain deterministic software' }
+        ]; track s.label) {
+          <div class="subscore">
+            <div class="subscore-head">
+              <span class="subscore-label">{{ s.label }}</span>
+              <span class="subscore-value mono">{{ s.value }}</span>
+            </div>
+            <div class="subscore-bar"><span [style.width.%]="s.value"></span></div>
+            <span class="subscore-hint">{{ s.hint }}</span>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ── Cost breakdown ── -->
+    <section class="section">
+      <h4 class="section-title">Cost breakdown</h4>
+      <div class="cost-grid">
+        <div class="card cost-card">
+          <span class="cost-label">Development</span>
+          <span class="cost-value mono">{{ e.costBreakdown.development.totalCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          <span class="cost-sub">one-off · {{ e.costBreakdown.development.hourlyRate | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}/hr</span>
+        </div>
+        <div class="card cost-card">
+          <span class="cost-label">Infrastructure</span>
+          <span class="cost-value mono">{{ e.costBreakdown.infrastructure.annualCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          <span class="cost-sub">/yr · {{ e.costBreakdown.infrastructure.monthlyCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}/mo</span>
+        </div>
+        <div class="card cost-card">
+          <span class="cost-label">AI tokens</span>
+          <span class="cost-value mono">{{ e.costBreakdown.aiTokens.annualCost.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          <span class="cost-sub">/yr expected</span>
+        </div>
+        <div class="card cost-card">
+          <span class="cost-label">Maintenance</span>
+          <span class="cost-value mono">{{ e.costBreakdown.maintenance.annualCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          <span class="cost-sub">/yr · {{ e.costBreakdown.maintenance.monthlyHours }} hrs/mo</span>
+        </div>
+      </div>
+
+      <!-- Dev detail -->
+      <div class="card detail-card">
+        <div class="detail-head">Development effort</div>
+        @for (b of e.costBreakdown.development.breakdown; track b.category) {
+          <div class="detail-row">
+            <span>{{ b.category }}</span>
+            <span class="mono dim">{{ b.hours }} hrs</span>
+            <span class="mono">{{ b.cost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          </div>
+        }
+      </div>
+
+      <!-- Infra detail -->
+      <div class="card detail-card">
+        <div class="detail-head">Azure services <span class="dim">(monthly)</span></div>
+        @for (svc of e.costBreakdown.infrastructure.services; track svc.serviceName) {
+          <div class="detail-row">
+            <span>{{ svc.serviceName }} <span class="dim">· {{ svc.tier }}</span></span>
+            <span class="dim svc-detail">{{ svc.details }}</span>
+            <span class="mono">{{ svc.monthlyCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ── Token economics ── -->
+    @if (e.costBreakdown.aiTokens.modelBreakdown.length > 0) {
+      <section class="section">
+        <h4 class="section-title">Token economics</h4>
+        <div class="card detail-card">
+          <div class="detail-head">Model usage <span class="dim">(monthly)</span></div>
+          <div class="token-row token-head">
+            <span>Model</span><span>Use cases</span><span class="ta-r">In</span><span class="ta-r">Out</span><span class="ta-r">$/mo</span>
+          </div>
+          @for (m of e.costBreakdown.aiTokens.modelBreakdown; track m.model) {
+            <div class="token-row">
+              <span class="mono">{{ m.model }}</span>
+              <span class="dim">{{ m.useCases.join(', ') }}</span>
+              <span class="ta-r mono dim">{{ compactTokens(m.monthlyInputTokens) }}</span>
+              <span class="ta-r mono dim">{{ compactTokens(m.monthlyOutputTokens) }}</span>
+              <span class="ta-r mono">{{ m.monthlyCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+            </div>
+          }
+        </div>
+
+        <div class="scenario-grid">
+          @for (sc of [
+            { label: 'Daily', s: e.tokenProjection.daily },
+            { label: 'Monthly', s: e.tokenProjection.monthly },
+            { label: 'Annual', s: e.tokenProjection.annual }
+          ]; track sc.label) {
+            <div class="card scenario-card">
+              <span class="cost-label">{{ sc.label }} tokens</span>
+              <span class="cost-value mono">{{ compactTokens(sc.s.expected) }}</span>
+              <span class="cost-sub mono">{{ compactTokens(sc.s.optimistic) }} – {{ compactTokens(sc.s.pessimistic) }}</span>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- ── AI vs Standard ── -->
+    <section class="section">
+      <h4 class="section-title">AI vs standard approach</h4>
+      <div class="card compare-summary">
+        <span class="badge" [class.badge-success]="e.comparison.recommendation === 'ai'"
+              [class.badge-info]="e.comparison.recommendation === 'hybrid'"
+              [class.badge-warning]="e.comparison.recommendation === 'standard'">
+          Leans {{ e.comparison.recommendation }}
+        </span>
+        <p>{{ e.comparison.summary }}</p>
+      </div>
+
+      <div class="approach-grid">
+        <div class="card approach-card">
+          <div class="approach-head"><h5>AI approach</h5>
+            <span class="mono">{{ e.comparison.aiApproach.totalCost.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          </div>
+          <div class="approach-meta">
+            <span>{{ e.comparison.aiApproach.timelineWeeks }} wks</span>
+            <span>{{ e.comparison.aiApproach.teamSize }} people</span>
+            <span class="mono">{{ e.comparison.aiApproach.monthlyRunCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}/mo run</span>
+          </div>
+          <ul class="approach-list">
+            @for (b of e.comparison.aiApproach.benefits; track b) { <li class="pro">{{ b }}</li> }
+            @for (c of e.comparison.aiApproach.challenges; track c) { <li class="con">{{ c }}</li> }
+          </ul>
+        </div>
+
+        <div class="card approach-card">
+          <div class="approach-head"><h5>Standard approach</h5>
+            <span class="mono">{{ e.comparison.standardApproach.totalCost.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          </div>
+          <div class="approach-meta">
+            <span>{{ e.comparison.standardApproach.timelineWeeks }} wks</span>
+            <span>{{ e.comparison.standardApproach.teamSize }} people</span>
+            <span class="mono">{{ e.comparison.standardApproach.monthlyRunCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}/mo run</span>
+          </div>
+          <ul class="approach-list">
+            @for (b of e.comparison.standardApproach.benefits; track b) { <li class="pro">{{ b }}</li> }
+            @for (c of e.comparison.standardApproach.challenges; track c) { <li class="con">{{ c }}</li> }
+          </ul>
+        </div>
+      </div>
+
+      <div class="card detail-card">
+        <div class="detail-head">Dimension scoring <span class="dim">(0–10)</span></div>
+        @for (d of e.comparison.dimensions; track d.dimension) {
+          <div class="dim-row">
+            <span class="dim-name">{{ d.dimension }}</span>
+            <div class="dim-bars">
+              <div class="dim-bar ai"><span [style.width.%]="d.aiScore * 10"></span></div>
+              <div class="dim-bar std"><span [style.width.%]="d.standardScore * 10"></span></div>
+            </div>
+            <span class="dim-scores mono"><span class="ai-c">{{ d.aiScore }}</span> / <span class="std-c">{{ d.standardScore }}</span></span>
+          </div>
+        }
+        <div class="dim-legend">
+          <span><i class="dot ai"></i> AI</span><span><i class="dot std"></i> Standard</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Use case analysis ── -->
+    @if (e.feasibility.useCaseAnalysis.length > 0) {
+      <section class="section">
+        <h4 class="section-title">Use case analysis</h4>
+        <div class="card detail-card">
+          @for (uc of e.feasibility.useCaseAnalysis; track uc.useCaseName) {
+            <div class="uc-row">
+              <div class="uc-main">
+                <span class="uc-name">{{ uc.useCaseName }}</span>
+                <span class="uc-just dim">{{ uc.justification }}</span>
+              </div>
+              <span class="badge badge-info uc-model mono">{{ uc.recommendedModel }}</span>
+              <app-score-badge [score]="uc.feasibilityScore" />
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- ── Risks & recommendations ── -->
+    <section class="section two-col">
+      <div class="card detail-card">
+        <div class="detail-head">Key risks</div>
+        @for (r of e.feasibility.risks; track r.description) {
+          <div class="risk-row">
+            <div class="risk-top">
+              <span class="badge" [class]="severityClass(r.severity)">{{ r.severity }}</span>
+              <span class="risk-cat">{{ r.category }}</span>
+            </div>
+            <p class="risk-desc">{{ r.description }}</p>
+            <p class="risk-mit dim">→ {{ r.mitigation }}</p>
+          </div>
+        }
+      </div>
+
+      <div class="card detail-card">
+        <div class="detail-head">Recommendations</div>
+        @for (rec of e.recommendations; track rec.title) {
+          <div class="rec-row">
+            <div class="risk-top">
+              <span class="badge" [class]="priorityClass(rec.priority)">{{ rec.priority }}</span>
+              <span class="risk-cat">{{ rec.category }}</span>
+            </div>
+            <p class="rec-row-title">{{ rec.title }}</p>
+            <p class="risk-desc dim">{{ rec.description }}</p>
+          </div>
+        }
+      </div>
+    </section>
+  } @else if (estimation() === null) {
+    <div class="card empty">
+      <p class="empty-title">Estimate not found</p>
+      <p class="empty-sub">This estimate may have been removed or the link is incorrect.</p>
+      <a class="btn btn-secondary" routerLink="/history">Back to history</a>
+    </div>
+  } @else {
+    <app-loading-spinner label="Loading report…" />
+  }
+</div>

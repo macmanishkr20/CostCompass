@@ -1,0 +1,59 @@
+<div class="login-page">
+  <section class="hero">
+    <a class="brand" href="#">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <polygon points="15.5 8.5 11 11 8.5 15.5 13 13 15.5 8.5" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
+      <span class="brand-text">Cost<span class="text-gradient">Compass</span></span>
+    </a>
+
+    <h1 class="hero-title">Decide if AI is worth it<br />— before you build it.</h1>
+    <p class="hero-sub">
+      Score AI &amp; Agentic feasibility, project token and infrastructure cost with
+      deterministic FinOps math, and compare AI vs. standard delivery — in one assessment.
+    </p>
+
+    <ul class="hero-points">
+      <li><span class="dot"></span> Feasibility scoring across AI, Agentic &amp; Traditional fit</li>
+      <li><span class="dot"></span> Deterministic cost &amp; token projections leadership can trust</li>
+      <li><span class="dot"></span> New-build and existing-codebase enhancement modes</li>
+    </ul>
+  </section>
+
+  <section class="form-pane">
+    <div class="login-card card animate-fade-in-up">
+      <h2 class="form-title">Sign in</h2>
+      <p class="form-hint">Use your work email to continue.</p>
+
+      <form (ngSubmit)="submit()">
+        <div class="input-group">
+          <label for="email">Work email</label>
+          <input
+            id="email"
+            class="input"
+            type="email"
+            name="email"
+            placeholder="you@company.com"
+            autocomplete="email"
+            [ngModel]="email()"
+            (ngModelChange)="email.set($event)"
+          />
+        </div>
+
+        @if (error()) {
+          <p class="form-error">{{ error() }}</p>
+        }
+
+        <button class="btn btn-primary btn-lg w-full" type="submit">Continue</button>
+      </form>
+
+      <p class="sso-note">
+        Enterprise SSO (Microsoft Entra ID) connects in a later release.
+      </p>
+    </div>
+  </section>
+</div>

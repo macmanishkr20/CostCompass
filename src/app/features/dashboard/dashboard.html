@@ -1,0 +1,92 @@
+<div class="dashboard">
+  <!-- ── Stats ── -->
+  @if (stats(); as s) {
+    <div class="stats-grid">
+      <div class="card stat-card animate-fade-in-up">
+        <span class="stat-label">Total estimates</span>
+        <span class="stat-value">{{ s.totalEstimates }}</span>
+        <span class="stat-sub">{{ s.activeProjects }} active</span>
+      </div>
+      <div class="card stat-card animate-fade-in-up">
+        <span class="stat-label">Avg feasibility</span>
+        <span class="stat-value">{{ s.avgFeasibilityScore }}<span class="unit">/100</span></span>
+        <span class="stat-sub text-success">across portfolio</span>
+      </div>
+      <div class="card stat-card animate-fade-in-up">
+        <span class="stat-label">Projected cost</span>
+        <span class="stat-value">{{ s.totalProjectedCost | currency: s.currency : 'symbol' : '1.0-0' }}</span>
+        <span class="stat-sub">expected, all estimates</span>
+      </div>
+      <div class="card stat-card animate-fade-in-up">
+        <span class="stat-label">Active projects</span>
+        <span class="stat-value">{{ s.activeProjects }}</span>
+        <span class="stat-sub">in draft or estimating</span>
+      </div>
+    </div>
+  } @else {
+    <app-loading-spinner label="Loading dashboard…" />
+  }
+
+  <!-- ── Quick actions ── -->
+  <div class="actions-grid">
+    <a class="card card-hover action" routerLink="/estimate/new">
+      <div class="action-icon blue">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+      </div>
+      <div class="action-text">
+        <span class="action-title">New AI estimate</span>
+        <span class="action-sub">Score a greenfield idea and project its cost</span>
+      </div>
+      <span class="action-arrow">→</span>
+    </a>
+
+    <a class="card card-hover action" routerLink="/estimate/enhance">
+      <div class="action-icon purple">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6 4 4 6-6" /><path d="M20 9V3h-6" /></svg>
+      </div>
+      <div class="action-text">
+        <span class="action-title">Enhance existing app</span>
+        <span class="action-sub">Analyze a GitHub repo and scope AI add-ons</span>
+      </div>
+      <span class="action-arrow">→</span>
+    </a>
+  </div>
+
+  <!-- ── Recent estimates ── -->
+  <section class="recent">
+    <div class="section-head">
+      <h3>Recent estimates</h3>
+      <a routerLink="/history" class="link-muted">View all</a>
+    </div>
+
+    @if (recent(); as list) {
+      <div class="card table-card">
+        <div class="row head">
+          <span class="col-name">Project</span>
+          <span class="col-rec">Recommendation</span>
+          <span class="col-score">Feasibility</span>
+          <span class="col-cost">Cost</span>
+          <span class="col-status">Status</span>
+          <span class="col-date">Updated</span>
+        </div>
+        @for (e of list; track e.id) {
+          <a class="row" [routerLink]="['/estimate', e.id, 'report']">
+            <span class="col-name">
+              <span class="proj-name">{{ e.projectName }}</span>
+              <span class="proj-meta">{{ projectTypeLabel(e.projectType) }} · {{ e.industryDomain }}</span>
+            </span>
+            <span class="col-rec">{{ e.recommendationLabel }}</span>
+            <span class="col-score"><app-score-badge [score]="e.feasibilityScore" /></span>
+            <span class="col-cost mono">{{ e.totalCostExpected | currency: e.currency : 'symbol' : '1.0-0' }}</span>
+            <span class="col-status"><span class="badge" [class]="statusClass(e.status)">{{ statusLabel(e.status) }}</span></span>
+            <span class="col-date">{{ e.updatedAt | date: 'MMM d' }}</span>
+          </a>
+        }
+      </div>
+    } @else {
+      <app-loading-spinner />
+    }
+  </section>
+</div>
