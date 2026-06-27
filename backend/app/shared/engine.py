@@ -13,15 +13,26 @@ from __future__ import annotations
 
 import math
 
+from .azure_catalog import build_plan_context, calc_url_for
+from .azure_pricing import get_unit_price
+from .azure_planner import select_services
+from .platforms import (
+    PLATFORM_PROFILES,
+    classify_platform,
+    m365_services,
+    onprem_services,
+    platform_notes,
+    provider_display,
+)
 from .catalog import (
+    AUTOMATION_RATE_PERCENT,
     DEV_HOURLY_RATE,
     HOURS_PER_DEV_WEEK,
+    LOADED_HOURLY_RATE,
     MAINT_HOURLY_RATE,
     COMPLEXITY_HOURS,
     MODEL_CATALOG,
     PRIORITY_WEIGHT,
-    SCALE_APIM,
-    SCALE_INFRA_BASE,
     SCALE_MAINT_HOURS,
     TASK_PROFILES,
     archetype_blurb,
@@ -83,6 +94,51 @@ def _currency(inp: ProjectInput) -> str:
 def _compliance(inp: ProjectInput) -> list[str]:
     tp = inp.technical_preferences
     return tp.compliance_requirements if tp else []
+
+
+def _rates(inp: ProjectInput) -> tuple[float, float, float]:
+    """Resolve (dev_rate, maint_rate, effective_hours_per_week).
+
+    An org's overrides win; otherwise we fall back to the catalog baselines, so
+    an absent `cost_assumptions` block reproduces the platform defaults exactly.
+    """
+    ca = inp.cost_assumptions
+    dev = ca.dev_hourly_rate if ca and ca.dev_hourly_rate is not None else DEV_HOURLY_RATE
+    maint = ca.maint_hourly_rate if ca and ca.maint_hourly_rate is not None else MAINT_HOURLY_RATE
+    hpw = ca.effective_hours_per_week if ca and ca.effective_hours_per_week is not None else HOURS_PER_DEV_WEEK
+    return dev, maint, hpw
+
+
+def _benefit_dials(inp: ProjectInput) -> tuple[float, float]:
+    """Resolve (loaded_hourly_rate, automation_rate_percent) — org overrides win."""
+    ca = inp.cost_assumptions
+    loaded = ca.loaded_hourly_rate if ca and ca.loaded_hourly_rate is not None else LOADED_HOURLY_RATE
+    auto = ca.automation_rate_percent if ca and ca.automation_rate_percent is not None else AUTOMATION_RATE_PERCENT
+    return loaded, auto
+
+
+def _benefit_basis(uc, profile: dict, loaded_rate: float, automation_pct: float) -> dict:
+    """Decompose one use case's ROI value into defensible, visible inputs.
+
+    value/call = minutes ÷ 60 × loaded_hourly_rate × automation_rate%.
+    A flat `value_per_call` override bypasses the derivation (and carries no
+    decomposition); otherwise the per-call dollar is built from minutes saved.
+    """
+    if uc.value_per_call is not None:
+        return {
+            "value_per_call": uc.value_per_call,
+            "minutes_per_call": None,
+            "loaded_hourly_rate": None,
+            "automation_rate_percent": None,
+        }
+    minutes = uc.minutes_per_call if uc.minutes_per_call is not None else profile["minutes_per_call"]
+    value_per_call = round2(minutes / 60 * loaded_rate * (automation_pct / 100))
+    return {
+        "value_per_call": value_per_call,
+        "minutes_per_call": minutes,
+        "loaded_hourly_rate": loaded_rate,
+        "automation_rate_percent": automation_pct,
+    }
 
 
 # ── Feasibility ─────────────────────────────────────────────────────
@@ -248,6 +304,7 @@ def score_feasibility(inp: ProjectInput) -> dict:
             ),
             "recommended_model": p["model"],
             "complexity": cx,
+            "recommended_approach": "ai" if p["ai_n"] >= 50 else "standard",
         })
 
     return {
@@ -337,17 +394,106 @@ def project_tokens(inp: ProjectInput) -> dict:
     }
 
 
+# ── Infrastructure (Azure, live-priced) ─────────────────────────────
+
+def compute_infrastructure(inp: ProjectInput, model_breakdown: list[dict], *, platform: str) -> dict:
+    """Build the infrastructure cost lines for the project's delivery platform.
+
+    Dispatches on the platform's cost *model*: consumption (Azure/AWS/GCP) reuses
+    the catalog + planner; licensing (M365/Copilot) and capex (on-prem) build
+    their own deterministic line items. The chosen platform is recorded so the
+    report can explain why the cost is shaped the way it is.
+    """
+    monthly_token_cost = round2(sum(m["monthly_cost"] for m in model_breakdown))
+    monthly_tokens = sum(m["monthly_input_tokens"] + m["monthly_output_tokens"] for m in model_breakdown)
+    uses_azure_openai = any(
+        MODEL_CATALOG[m["model"]]["provider"] == "Azure OpenAI" for m in model_breakdown
+    )
+
+    profile = PLATFORM_PROFILES.get(platform) or PLATFORM_PROFILES["azure_paas"]
+    ctx = build_plan_context(
+        inp,
+        uses_azure_openai=uses_azure_openai,
+        monthly_token_cost=monthly_token_cost,
+        monthly_tokens=monthly_tokens,
+    )
+
+    if profile.cost_model == "consumption":
+        services = _consumption_services(inp, ctx, profile)
+    elif profile.key == "m365_copilot":
+        services = m365_services(ctx)
+    else:  # on_prem
+        services = onprem_services(ctx)
+
+    infra_monthly = jround(sum(s["monthly_cost"] for s in services if s["included_in_total"]))
+    return {
+        "monthly_cost": infra_monthly,
+        "annual_cost": infra_monthly * 12,
+        "services": services,
+        "platform": profile.key,
+        "platform_label": profile.label,
+        "cost_model": profile.cost_model,
+        "meters_tokens": profile.meters_tokens,
+        "notes": platform_notes(profile.key, ctx),
+    }
+
+
+def _consumption_services(inp: ProjectInput, ctx, profile) -> list[dict]:
+    """Catalog/planner-driven consumption lines (Azure/AWS/GCP).
+
+    Azure keeps live Retail-Prices refinement and its per-service calculator
+    links; AWS/GCP overlay the provider's service names and use the deterministic
+    baselines (no live retail lookup for those providers yet). Azure OpenAI is
+    listed but excluded from the subtotal — its tokens are already in the
+    AI-tokens line — to avoid double counting.
+    """
+    is_azure = profile.provider == "azure"
+    services: list[dict] = []
+    for spec in select_services(inp, ctx):
+        region = spec.region(ctx) if is_azure else profile.default_region
+        qty = spec.quantity(ctx)
+        baseline = spec.unit_price(ctx)
+
+        if is_azure and spec.pricing == "metered":
+            live = get_unit_price(spec, ctx, region)
+            unit_price = live if live is not None else baseline
+            source = "live" if live is not None else "fallback"
+        elif spec.pricing == "estimate":
+            unit_price, source = baseline, "estimate"
+        else:  # tokens, or any metered service on a non-live provider
+            unit_price, source = baseline, "fallback"
+
+        name, url = provider_display(profile.provider, spec.key, spec.name, calc_url_for(spec))
+        monthly = round2(unit_price * qty)
+        services.append({
+            "service_name": name,
+            "category": spec.category,
+            "tier": spec.tier(ctx),
+            "region": region,
+            "quantity": round2(qty),
+            "unit": spec.unit,
+            "unit_price": round2(unit_price),
+            "monthly_cost": monthly,
+            "price_source": source,
+            "included_in_total": spec.included_in_total,
+            "details": spec.details(ctx),
+            "azure_pricing_url": url,
+        })
+    return services
+
+
 # ── Cost ────────────────────────────────────────────────────────────
 
 def compute_cost(inp: ProjectInput, feas: dict) -> dict:
     features = inp.features or []
     use_cases = inp.ai_use_cases or []
     currency = _currency(inp)
+    dev_rate, maint_rate, _ = _rates(inp)
 
     feature_breakdown = []
     for f in features:
         hours = COMPLEXITY_HOURS.get(f.complexity, 64)
-        feature_breakdown.append({"category": f.name, "hours": hours, "cost": jround(hours * DEV_HOURLY_RATE)})
+        feature_breakdown.append({"category": f.name, "hours": hours, "cost": jround(hours * dev_rate)})
 
     ai_integration_hours = 0.0
     for uc in use_cases:
@@ -358,7 +504,7 @@ def compute_cost(inp: ProjectInput, feas: dict) -> dict:
         feature_breakdown.append({
             "category": "AI integration & evaluation",
             "hours": jround(ai_integration_hours),
-            "cost": jround(ai_integration_hours * DEV_HOURLY_RATE),
+            "cost": jround(ai_integration_hours * dev_rate),
         })
 
     if inp.project_type == "enhancement":
@@ -367,63 +513,58 @@ def compute_cost(inp: ProjectInput, feas: dict) -> dict:
         feature_breakdown.append({
             "category": f"Integrate with existing {framework}",
             "hours": integration_hours,
-            "cost": jround(integration_hours * DEV_HOURLY_RATE),
+            "cost": jround(integration_hours * dev_rate),
         })
 
     total_dev_hours = sum(b["hours"] for b in feature_breakdown)
-    development_cost = jround(total_dev_hours * DEV_HOURLY_RATE)
+    development_cost = jround(total_dev_hours * dev_rate)
 
     scale = inp.scale or "medium"
-    data_gb = _data_gb(inp)
-    needs_search = any(u.task_type in ("rag_qa", "document_analysis") for u in use_cases)
-    services = [
-        {"service_name": "Azure Container Apps", "tier": scale, "monthly_cost": SCALE_INFRA_BASE[scale], "details": "App + API hosting, autoscaling"},
-        {"service_name": "Azure Cosmos DB", "tier": "Serverless", "monthly_cost": jround(40 + data_gb * 0.25), "details": f"~{data_gb} GB operational data"},
-        {"service_name": "Azure Blob Storage", "tier": "Hot", "monthly_cost": round2(max(2, data_gb * 0.021)), "details": "Artifacts, exports, raw documents"},
-        {"service_name": "Application Insights", "tier": "Pay-as-you-go", "monthly_cost": jround(30 + _requests_per_day(inp) * 0.00002), "details": "Telemetry & monitoring"},
-    ]
-    if SCALE_APIM[scale] > 0:
-        services.append({"service_name": "API Management", "tier": scale, "monthly_cost": SCALE_APIM[scale], "details": "Gateway, throttling, keys"})
-    if needs_search:
-        services.append({
-            "service_name": "Azure AI Search",
-            "tier": "Basic" if scale == "small" else "Standard",
-            "monthly_cost": 75 if scale == "small" else 250,
-            "details": "Vector + keyword retrieval for RAG",
-        })
-    infra_monthly = jround(sum(x["monthly_cost"] for x in services))
 
     model_breakdown = model_token_breakdown(inp)
     monthly_token_cost = round2(sum(m["monthly_cost"] for m in model_breakdown))
     monthly_tokens = sum(m["monthly_input_tokens"] + m["monthly_output_tokens"] for m in model_breakdown)
 
-    maint_hours = SCALE_MAINT_HOURS.get(scale, 24) + len(use_cases) * 4
-    maint_monthly = jround(maint_hours * MAINT_HOURLY_RATE)
+    # The delivery platform selects the infrastructure cost *model*. On a
+    # licensing platform (M365/Copilot) AI usage is bundled into the per-seat
+    # Copilot add-on, so the metered token line is zeroed to avoid double counting
+    # — token *volumes* are still reported for transparency.
+    platform = classify_platform(inp)
+    profile = PLATFORM_PROFILES.get(platform) or PLATFORM_PROFILES["azure_paas"]
+    infrastructure = compute_infrastructure(inp, model_breakdown, platform=platform)
+    infra_monthly = infrastructure["monthly_cost"]
 
-    annual_run = (infra_monthly + monthly_token_cost + maint_monthly) * 12
+    token_factor = 1.0 if profile.meters_tokens else 0.0
+    token_cost = round2(monthly_token_cost * token_factor)
+    token_breakdown = (
+        model_breakdown
+        if token_factor == 1.0
+        else [{**m, "monthly_cost": 0.0} for m in model_breakdown]
+    )
+
+    maint_hours = SCALE_MAINT_HOURS.get(scale, 24) + len(use_cases) * 4
+    maint_monthly = jround(maint_hours * maint_rate)
+
+    annual_run = (infra_monthly + token_cost + maint_monthly) * 12
     expected = jround(development_cost + annual_run)
 
     return {
         "development": {
             "ai_integration_hours": jround(ai_integration_hours),
-            "hourly_rate": DEV_HOURLY_RATE,
+            "hourly_rate": dev_rate,
             "total_cost": development_cost,
             "breakdown": feature_breakdown,
         },
-        "infrastructure": {
-            "monthly_cost": infra_monthly,
-            "annual_cost": infra_monthly * 12,
-            "services": services,
-        },
+        "infrastructure": infrastructure,
         "ai_tokens": {
             "monthly_tokens": {"optimistic": jround(monthly_tokens * 0.7), "expected": jround(monthly_tokens), "pessimistic": jround(monthly_tokens * 1.6)},
-            "monthly_cost": {"optimistic": round2(monthly_token_cost * 0.7), "expected": monthly_token_cost, "pessimistic": round2(monthly_token_cost * 1.6)},
-            "annual_cost": {"optimistic": round2(monthly_token_cost * 0.7 * 12), "expected": round2(monthly_token_cost * 12), "pessimistic": round2(monthly_token_cost * 1.6 * 12)},
-            "model_breakdown": model_breakdown,
+            "monthly_cost": {"optimistic": round2(token_cost * 0.7), "expected": token_cost, "pessimistic": round2(token_cost * 1.6)},
+            "annual_cost": {"optimistic": round2(token_cost * 0.7 * 12), "expected": round2(token_cost * 12), "pessimistic": round2(token_cost * 1.6 * 12)},
+            "model_breakdown": token_breakdown,
         },
         "maintenance": {
             "monthly_hours": maint_hours,
-            "hourly_rate": MAINT_HOURLY_RATE,
+            "hourly_rate": maint_rate,
             "monthly_cost": maint_monthly,
             "annual_cost": maint_monthly * 12,
             "includes": ["Prompt & model upkeep", "Monitoring & cost guardrails", "Eval regression checks", "Dependency updates"],
@@ -436,21 +577,30 @@ def compute_cost(inp: ProjectInput, feas: dict) -> dict:
 # ── AI vs Standard comparison ───────────────────────────────────────
 
 def compare_approaches(inp: ProjectInput, feas: dict, cost: dict) -> dict:
+    dev_rate, _, hours_per_week = _rates(inp)
     ai_total = cost["total"]
     ai_monthly_run = cost["infrastructure"]["monthly_cost"] + cost["ai_tokens"]["monthly_cost"]["expected"] + cost["maintenance"]["monthly_cost"]
     ai_dev_hours = sum(b["hours"] for b in cost["development"]["breakdown"])
-    ai_team = max(2, math.ceil(ai_dev_hours / (HOURS_PER_DEV_WEEK * 8)))
-    ai_weeks = max(4, jround(ai_dev_hours / (HOURS_PER_DEV_WEEK * ai_team)))
+    ai_team = max(2, math.ceil(ai_dev_hours / (hours_per_week * 8)))
+    ai_weeks = max(4, jround(ai_dev_hours / (hours_per_week * ai_team)))
 
     reliance = feas["sub_scores"]["ai_necessity"] / 100
     std_dev_hours = jround(ai_dev_hours * (0.85 + reliance * 0.8))
-    std_dev_cost = jround(std_dev_hours * DEV_HOURLY_RATE)
+    std_dev_cost = jround(std_dev_hours * dev_rate)
     std_monthly_run = jround(cost["infrastructure"]["monthly_cost"] * 0.5 + cost["maintenance"]["monthly_cost"] * 0.8)
-    std_team = max(2, math.ceil(std_dev_hours / (HOURS_PER_DEV_WEEK * 8)))
-    std_weeks = max(4, jround(std_dev_hours / (HOURS_PER_DEV_WEEK * std_team)))
+    std_team = max(2, math.ceil(std_dev_hours / (hours_per_week * 8)))
+    std_weeks = max(4, jround(std_dev_hours / (hours_per_week * std_team)))
     std_expected = jround(std_dev_cost + std_monthly_run * 12)
 
     recommendation = "ai" if feas["score"] >= 55 else "hybrid" if feas["score"] >= 40 else "standard"
+    # A genuinely mixed product — some capabilities AI-led, some standard-led — is
+    # "hybrid" by definition. Don't let a borderline composite brand it all-standard
+    # while the per-capability split still shows an AI-led feature (the two would
+    # otherwise contradict each other in the report).
+    approaches = [u["recommended_approach"] for u in feas["use_case_analysis"]]
+    is_mixed = "ai" in approaches and "standard" in approaches
+    if is_mixed and recommendation == "standard" and feas["score"] >= 30:
+        recommendation = "hybrid"
 
     dimensions = [
         {"dimension": "Time to market", "ai_score": int(clamp(jround(5 + reliance * 4), 0, 10)), "standard_score": int(clamp(jround(8 - reliance * 3), 0, 10)), "notes": "AI accelerates ambiguous tasks; standard is faster for well-specified ones."},
@@ -504,6 +654,7 @@ def project_roi(inp: ProjectInput, feas: dict, cost: dict) -> dict:
     )
     annual_run_cost = round2(ai_monthly_run * 12)
 
+    loaded_rate, automation_pct = _benefit_dials(inp)
     value_drivers = []
     annual_benefit = 0.0
     if use_cases:
@@ -514,12 +665,12 @@ def project_roi(inp: ProjectInput, feas: dict, cost: dict) -> dict:
             p = _profile(uc.task_type)
             daily_req = (total_requests_per_day * weights[i]) / w_total
             annual_calls = jround(daily_req * 365)
-            value_per_call = p["value_per_call"]
-            annual_value = round2(annual_calls * value_per_call)
+            basis = _benefit_basis(uc, p, loaded_rate, automation_pct)
+            annual_value = round2(annual_calls * basis["value_per_call"])
             annual_benefit += annual_value
             value_drivers.append({
                 "use_case": uc.name,
-                "value_per_call": value_per_call,
+                **basis,
                 "annual_calls": annual_calls,
                 "annual_value": annual_value,
             })
@@ -549,12 +700,167 @@ def project_roi(inp: ProjectInput, feas: dict, cost: dict) -> dict:
         "curve": curve,
         "value_drivers": value_drivers,
         "assumptions": [
-            "Benefit = automated calls × the per-task-type value of the manual work they replace.",
+            "Benefit/call = minutes saved ÷ 60 × loaded labour rate × automation rate.",
+            f"Loaded labour rate ${loaded_rate:,.0f}/hr; automation rate {automation_pct:.0f}% of calls handled end-to-end.",
             f"{_requests_per_day(inp)} requests/day at launch, distributed across use cases by priority.",
             "Run cost mirrors the first-year operating total (infra + tokens + maintenance).",
             "Three-year view holds volume and pricing flat — no growth or discounting applied.",
         ],
     }
+
+
+# ── Verdict (the decisive, willing-to-say-no call) ──────────────────
+
+def derive_verdict(feas: dict, comparison: dict) -> dict:
+    """Collapse the analysis into one actionable decision.
+
+    Keyed on the AI-vs-standard recommendation (which already encodes the
+    feasibility score) plus the traditional-only archetype guard, so the verdict
+    never contradicts the comparison the rest of the report shows.
+    """
+    label = feas["archetype_label"]
+    rec = comparison["recommendation"]  # "ai" | "hybrid" | "standard"
+
+    if rec == "standard" or feas["archetype"] == "traditional":
+        return {
+            "decision": "do_not_use_ai",
+            "headline": "Don't build this with AI",
+            "one_liner": (
+                "Standard software solves this at lower cost and risk; revisit AI "
+                "only with a sharper, measured use case."
+            ),
+            "disposition": "stop",
+            "recommend_ai": False,
+        }
+    if rec == "ai":
+        return {
+            "decision": "build_with_ai",
+            "headline": "Build this with AI",
+            "one_liner": f"A measured AI investment pays off here — build it as a {label}.",
+            "disposition": "go",
+            "recommend_ai": True,
+        }
+    return {
+        "decision": "hybrid",
+        "headline": "Take a hybrid approach",
+        "one_liner": f"Use AI only where it clearly pays — a {label} blend beats going all-in or skipping it.",
+        "disposition": "caution",
+        "recommend_ai": True,
+    }
+
+
+# ── Confidence (deterministic self-assessment) ──────────────────────
+
+# Decision lines the verdict keys on; we measure how decisively a score clears
+# them (a score sitting on a boundary is fragile and lowers confidence).
+_DECISION_THRESHOLDS = (40, 55)
+_ARCHETYPE_THRESHOLDS = (35, 55)
+_DECISIVE_MARGIN = 15  # distance from a threshold we treat as fully decisive
+
+
+def _impact_for(ratio: float) -> str:
+    if ratio >= 0.66:
+        return "positive"
+    if ratio >= 0.4:
+        return "neutral"
+    return "negative"
+
+
+def assess_confidence(inp: ProjectInput, feas: dict) -> dict:
+    """Score how much weight to place on this estimate (0–100, deterministic)."""
+    # Factor A — requirements detail: are the descriptive inputs substantive?
+    detail_signals = [
+        len((inp.description or "").strip()) >= 30,
+        len(inp.features or []) > 0,
+        bool((inp.target_users or "").strip()),
+        bool((inp.industry_domain or "").strip()),
+    ]
+    ratio_detail = sum(1 for s in detail_signals if s) / len(detail_signals)
+
+    # Factor B — volume certainty: are the usage drivers given, or defaulted?
+    vs = inp.volume_and_scale
+    volume_signals = [
+        bool(vs and vs.requests_per_day is not None),
+        bool(vs and vs.data_volume_gb is not None),
+        bool(vs and vs.expected_daily_users is not None),
+        bool(vs and vs.growth_rate_percent is not None),
+    ]
+    ratio_volume = sum(1 for s in volume_signals if s) / len(volume_signals)
+
+    # Factor C — decisiveness: how far the scores sit from the decision lines.
+    score = feas["score"]
+    ai_n = feas["sub_scores"]["ai_necessity"]
+    dist_score = min(abs(score - t) for t in _DECISION_THRESHOLDS)
+    dist_nec = min(abs(ai_n - t) for t in _ARCHETYPE_THRESHOLDS)
+    ratio_decisive = (
+        clamp(dist_score / _DECISIVE_MARGIN, 0, 1) + clamp(dist_nec / _DECISIVE_MARGIN, 0, 1)
+    ) / 2
+
+    # Factor D — grounding: an analyzed codebase beats a greenfield guess.
+    grounded = inp.project_type == "enhancement" and inp.current_architecture is not None
+    ratio_ground = 1.0 if grounded else 0.5
+
+    raw = 100 * (
+        0.30 * ratio_detail + 0.30 * ratio_volume + 0.30 * ratio_decisive + 0.10 * ratio_ground
+    )
+    score_out = int(clamp(jround(raw), 0, 100))
+    level = "high" if score_out >= 70 else "medium" if score_out >= 45 else "low"
+
+    factors = [
+        {
+            "label": "Requirements detail",
+            "detail": (
+                "Project, features and audience are well described."
+                if ratio_detail >= 0.66
+                else "Some descriptive inputs are thin — add features and context to sharpen the build estimate."
+            ),
+            "impact": _impact_for(ratio_detail),
+        },
+        {
+            "label": "Volume certainty",
+            "detail": (
+                "Usage volumes were specified, anchoring the token and ROI math."
+                if ratio_volume >= 0.66
+                else "Several usage figures fall back to defaults, so run-cost and ROI are indicative."
+            ),
+            "impact": _impact_for(ratio_volume),
+        },
+        {
+            "label": "Recommendation margin",
+            "detail": (
+                "The feasibility score sits clear of the decision thresholds."
+                if ratio_decisive >= 0.66
+                else "The feasibility score is near a decision threshold; small input changes could shift the call."
+            ),
+            "impact": _impact_for(ratio_decisive),
+        },
+        {
+            "label": "Grounding",
+            "detail": (
+                "Grounded in an analyzed existing codebase."
+                if grounded
+                else "Greenfield estimate with no existing system to measure against."
+            ),
+            "impact": _impact_for(ratio_ground),
+        },
+    ]
+
+    rationale = {
+        "high": (
+            "Inputs are detailed and the recommendation sits clear of the decision "
+            "thresholds, so these figures are dependable for planning."
+        ),
+        "medium": (
+            "The core inputs are present but some assumptions rely on defaults; treat "
+            "the figures as directional and firm up the weak spots."
+        ),
+        "low": (
+            "Several inputs are missing or the recommendation is near a decision "
+            "boundary; gather more detail before committing budget."
+        ),
+    }[level]
+
+    return {"level": level, "score": score_out, "rationale": rationale, "factors": factors}
 
 
 # ── Recommendations & report ────────────────────────────────────────
@@ -640,6 +946,8 @@ def estimate(inp: ProjectInput, est_id: str, generated_at: str) -> dict:
     tokens = project_tokens(inp)
     comparison = compare_approaches(inp, feas, cost)
     roi = project_roi(inp, feas, cost)
+    verdict = derive_verdict(feas, comparison)
+    confidence = assess_confidence(inp, feas)
     recommendations = build_recommendations(inp, feas)
     markdown = compose_markdown(inp, feas, cost)
 
@@ -650,6 +958,8 @@ def estimate(inp: ProjectInput, est_id: str, generated_at: str) -> dict:
         "project_type": inp.project_type,
         "industry_domain": inp.industry_domain,
         "feasibility": feas,
+        "verdict": verdict,
+        "confidence": confidence,
         "cost_breakdown": cost,
         "token_projection": tokens,
         "comparison": comparison,

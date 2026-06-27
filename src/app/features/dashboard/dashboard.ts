@@ -5,11 +5,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { MockDataService } from '../../core/services/mock-data.service';
 import { LoadingSpinner } from '../../shared/components/loading-spinner/loading-spinner';
 import { ScoreBadge } from '../../shared/components/score-badge/score-badge';
+import { TiltDirective } from '../../shared/directives/tilt.directive';
 import { statusClass, statusLabel, projectTypeLabel } from '../../shared/utils/status';
 
 @Component({
   selector: 'app-dashboard',
-  imports: [CurrencyPipe, DatePipe, RouterLink, LoadingSpinner, ScoreBadge],
+  imports: [CurrencyPipe, DatePipe, RouterLink, LoadingSpinner, ScoreBadge, TiltDirective],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

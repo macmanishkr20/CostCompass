@@ -230,11 +230,122 @@
               <input class="input" formControlName="complianceRequirements" placeholder="e.g. SOC 2, GDPR" />
             </div>
           </div>
+
+          <div class="input-group">
+            <label>Delivery platform <span class="muted">— sets the cost model the estimate is built against</span></label>
+            <select class="select" formControlName="deliveryPlatform">
+              @for (o of deliveryPlatformOptions; track o.value) {
+                <option [value]="o.value">{{ o.label }}</option>
+              }
+            </select>
+            <p class="field-note">
+              Consumption platforms (Azure/AWS/GCP) are metered by compute, data &amp; AI tokens.
+              Microsoft 365 + Copilot prices per seat and bundles AI into the seat. On-premises
+              amortizes hardware plus ops. Auto-detect infers it from the repo's hosting platform.
+            </p>
+          </div>
+
+          <div class="input-group">
+            <label>Azure regions <span class="muted">— used to price every extra service we add</span></label>
+            <div class="grid-3">
+              <div class="input-group">
+                <label class="sub-label">Primary region (all services)</label>
+                <select class="select" formControlName="azureRegion">
+                  @for (r of regionOptions; track r.value) {
+                    <option [value]="r.value">{{ r.label }}</option>
+                  }
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="sub-label">Azure OpenAI region</label>
+                <select class="select" formControlName="azureOpenAIRegion">
+                  @for (r of regionOptions; track r.value) {
+                    <option [value]="r.value">{{ r.label }}</option>
+                  }
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="sub-label">Azure AI Search region</label>
+                <select class="select" formControlName="azureSearchRegion">
+                  @for (r of regionOptions; track r.value) {
+                    <option [value]="r.value">{{ r.label }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
       }
 
-      <!-- ── Step 4: Review ── -->
+      <!-- ── Step 4: Assumptions ── -->
       @case (4) {
+        <div class="panel">
+          <h3>Assumptions</h3>
+          <p class="panel-hint">
+            Every dollar is computed from these. They default to our blended baseline —
+            plug in your org's real rates and the whole estimate re-prices around them.
+          </p>
+
+          <div class="grid-3">
+            <div class="input-group">
+              <label>Developer rate <span class="muted">($/hr)</span></label>
+              <input class="input" type="number" min="0" step="1" formControlName="devHourlyRate" />
+              <p class="field-note">Blended build rate. Default <strong>$115/hr</strong>.</p>
+            </div>
+            <div class="input-group">
+              <label>Maintenance rate <span class="muted">($/hr)</span></label>
+              <input class="input" type="number" min="0" step="1" formControlName="maintHourlyRate" />
+              <p class="field-note">Run/ops rate. Default <strong>$95/hr</strong>.</p>
+            </div>
+            <div class="input-group">
+              <label>Effective hours <span class="muted">(/dev/week)</span></label>
+              <input class="input" type="number" min="1" step="1" formControlName="effectiveHoursPerWeek" />
+              <p class="field-note">Productive hours, not nominal. Default <strong>32</strong>.</p>
+            </div>
+          </div>
+
+          <h4 class="assump-subhead">ROI benefit basis</h4>
+          <p class="panel-hint">
+            The benefit side is built bottom-up — not guessed. Each automated call is worth
+            <strong>minutes saved ÷ 60 × loaded rate × automation rate</strong>.
+          </p>
+
+          <div class="grid-2">
+            <div class="input-group">
+              <label>Loaded labour rate <span class="muted">($/hr)</span></label>
+              <input class="input" type="number" min="0" step="1" formControlName="loadedHourlyRate" />
+              <p class="field-note">Fully-loaded cost of the person whose work AI offsets. Default <strong>$75/hr</strong>.</p>
+            </div>
+            <div class="input-group">
+              <label>Automation rate <span class="muted">(% handled end-to-end)</span></label>
+              <input class="input" type="number" min="0" max="100" step="1" formControlName="automationRatePercent" />
+              <p class="field-note">Share of calls AI completes without human redo (deflection). Default <strong>70%</strong>.</p>
+            </div>
+          </div>
+
+          <div class="assump-roi" formArrayName="aiUseCases">
+            <label>Minutes saved per automated call <span class="muted">— manual work each call replaces</span></label>
+            @for (u of aiUseCases.controls; track u; let i = $index) {
+              <div class="assump-row" [formGroupName]="i">
+                <span class="assump-name">{{ u.value.name || 'Use case ' + (i + 1) }}</span>
+                <input
+                  class="input assump-input"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  formControlName="minutesPerCall"
+                  [placeholder]="'default ' + defaultMinutesPerCall(u.value.taskType) + ' min'"
+                />
+                <span class="assump-derived">≈ {{ previewValuePerCall(u.value.taskType, u.value.minutesPerCall) | currency }}/call</span>
+              </div>
+            }
+            <p class="field-note">Leave blank to use the task-type default. Minutes × the dials above set the benefit side of ROI.</p>
+          </div>
+        </div>
+      }
+
+      <!-- ── Step 5: Review ── -->
+      @case (5) {
         <div class="panel">
           <h3>Review & generate</h3>
           <p class="panel-hint">Every figure is computed deterministically against the detected stack.</p>
@@ -245,10 +356,16 @@
             <div><dt>Framework</dt><dd>{{ form.value.framework }}</dd></div>
             <div><dt>Language</dt><dd>{{ form.value.language }}</dd></div>
             <div><dt>Database</dt><dd>{{ form.value.database }}</dd></div>
-            <div><dt>API pattern</dt><dd>{{ form.value.apiPattern }}</dd></div>
+            <div><dt>Dev rate</dt><dd>{{ form.value.devHourlyRate }}/hr</dd></div>
+            <div><dt>Loaded rate</dt><dd>{{ form.value.loadedHourlyRate }}/hr</dd></div>
+            <div><dt>Automation</dt><dd>{{ form.value.automationRatePercent }}%</dd></div>
             <div><dt>Enhancement use cases</dt><dd>{{ aiUseCases.length }}</dd></div>
             <div><dt>Requests / day</dt><dd>{{ form.value.requestsPerDay }}</dd></div>
             <div><dt>Scale</dt><dd>{{ form.value.scale }}</dd></div>
+            <div>
+              <dt>Platform</dt>
+              <dd>{{ form.value.deliveryPlatform ? deliveryPlatformLabel(form.value.deliveryPlatform) : 'Auto-detect' }}</dd>
+            </div>
           </dl>
         </div>
       }

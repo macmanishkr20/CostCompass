@@ -14,8 +14,8 @@ import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from .config import Settings, get_settings
-from .schemas import Estimation
+from .shared.config import Settings, get_settings
+from .shared.schemas import Estimation
 
 logger = logging.getLogger("costcompass.repository")
 

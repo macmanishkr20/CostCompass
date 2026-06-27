@@ -5,6 +5,9 @@ pydantic>=2.7
 pydantic-settings>=2.3
 python-dotenv>=1.0
 langgraph>=0.2
+# LLM classifier providers. Azure OpenAI (preferred) uses `openai`; the direct
+# Anthropic path uses `anthropic`. Only the configured one is ever called.
+openai>=1.40
 anthropic>=0.40
 reportlab>=4.2
 openpyxl>=3.1
@@ -12,4 +15,4 @@ httpx>=0.27
 
 # Optional — only needed when COSMOS_ENDPOINT/COSMOS_KEY are configured.
 # Persistence falls back to local JSON files when this isn't installed.
-# azure-cosmos>=4.7
+azure-cosmos>=4.7

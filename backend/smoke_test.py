@@ -9,12 +9,20 @@ Usage:  python smoke_test.py
 
 from __future__ import annotations
 
+import os
 import sys
 
-from app import engine
+# Price infra from the deterministic catalog baseline (no live network calls)
+# so the parity assertions below are reproducible offline.
+os.environ.setdefault("AZURE_LIVE_PRICING", "false")
+# Keep the LLM nodes (classify + architect) on their deterministic heuristics so
+# the parity assertions are reproducible and never depend on a live model.
+os.environ.setdefault("ENABLE_LLM_CLASSIFIER", "false")
+
+from app.shared import engine
 from app.exports import estimation_to_excel, estimation_to_pdf
-from app.pipeline import run_pipeline
-from app.schemas import Estimation, ProjectInput
+from app.deterministic import run_pipeline
+from app.shared.schemas import Estimation, ProjectInput
 
 FAILS: list[str] = []
 
@@ -81,6 +89,16 @@ def main() -> int:
     #   archetype: aiN>=55, agentic 48<58, hasRetrieval(rag_qa) => rag_assistant
     check("archetype", est.feasibility.archetype, "rag_assistant")
 
+    print("\n── Solution proposal (architect node, heuristic w/ LLM off) ──")
+    # No explicit platform + no AWS/GCP/M365/on-prem keywords => azure_paas default.
+    # With the LLM disabled the architect must mirror classify_platform exactly so
+    # the priced platform (and every downstream number) is unchanged.
+    sp = est.solution_proposal
+    check("proposal_present", sp is not None, True)
+    check("proposal_platform", sp.recommended_platform if sp else None, "azure_paas")
+    check("proposal_source", sp.source if sp else None, "heuristic")
+    check("proposal_matches_infra", (sp.recommended_platform if sp else None), infra_platform := est.cost_breakdown.infrastructure.platform)
+
     print("\n── Development cost ──")
     # feature hours: high=130, medium=64
     # aiIntegration: rag_qa must_have base80 * cx(agentic55<70 =>1)=80 ; summarization nice_to_have base48 * 1 = 48 ; sum=128
@@ -89,13 +107,30 @@ def main() -> int:
     check("development_total", est.cost_breakdown.development.total_cost, 322 * 115)
 
     print("\n── Infrastructure (medium, 30GB, 3000 req/day, needs AI Search) ──")
-    # Container Apps 320 ; Cosmos round(40+30*0.25)=round(47.5)=48 ; Blob round2(max(2,30*0.021=0.63))=2.0
-    # App Insights round(30+3000*0.00002=30.06)=30 ; APIM medium=50 ; AI Search Standard=250
-    # sum = 320+48+2+30+50+250 = 700
-    check("infra_monthly", est.cost_breakdown.infrastructure.monthly_cost, 700)
-    check("infra_annual", est.cost_breakdown.infrastructure.annual_cost, 8400)
-    svc_names = [s.service_name for s in est.cost_breakdown.infrastructure.services]
+    # Planner (rule fallback, no LLM) + catalog baselines (live pricing off):
+    #   Container Apps 320 ; Cosmos round(40+30*0.25)=48 ; Blob round2(100*0.0184)=1.84
+    #   Monitor round(30+3000*0.00002)=30 ; APIM medium=50 ; Redis medium=55
+    #   AI Search S1 round2(730*0.336)=245.28 ; Content Safety medium=20
+    #   Key Vault round2(18*0.03)=0.54 ; Defender medium=45
+    #   Azure OpenAI is listed but excluded from the subtotal (included_in_total=False).
+    #   sum(in_total) = 320+48+1.84+30+50+55+245.28+20+0.54+45 = 815.66 -> round 816
+    infra = est.cost_breakdown.infrastructure
+    in_total_sum = sum(s.monthly_cost for s in infra.services if s.included_in_total)
+    check("infra_monthly", infra.monthly_cost, 816)
+    check("infra_monthly_consistent", infra.monthly_cost, engine.jround(in_total_sum))
+    check("infra_annual", infra.annual_cost, 816 * 12)
+    svc_names = [s.service_name for s in infra.services]
     check("has_ai_search", "Azure AI Search" in svc_names, True)
+    check("has_key_vault", "Azure Key Vault" in svc_names, True)
+    check("has_defender", "Microsoft Defender for Cloud" in svc_names, True)
+    # Azure OpenAI is shown for completeness but not added to the infra subtotal.
+    openai = next((s for s in infra.services if s.service_name == "Azure OpenAI"), None)
+    check("openai_listed", openai is not None, True)
+    check("openai_excluded_from_total", openai is not None and openai.included_in_total, False)
+    # Every service carries a region, a pricing source, and a calculator deep link.
+    check("services_have_region", all(s.region for s in infra.services), True)
+    check("services_have_calc_link", all(s.azure_pricing_url for s in infra.services), True)
+    check("price_sources_valid", all(s.price_source in ("live", "fallback", "estimate") for s in infra.services), True)
 
     print("\n── Tokens ──")
     # totalReq/day = max(3000, 2) = 3000 ; weights [1, 0.6] wTotal 1.6
@@ -115,19 +150,44 @@ def main() -> int:
     print("\n── Maintenance & total ──")
     # maintHours = 24 + 2*4 = 32 ; maintMonthly = 32*95 = 3040
     check("maint_monthly", est.cost_breakdown.maintenance.monthly_cost, 3040)
-    # annualRun = (700 + 85.56 + 3040)*12 = 3825.56*12 = 45906.72
-    # expected = round(37030 + 45906.72) = round(82936.72) = 82937
-    check("total_expected", est.cost_breakdown.total.expected, 82937)
-    check("total_min", est.cost_breakdown.total.min, engine.jround(82937 * 0.82))
-    check("total_max", est.cost_breakdown.total.max, engine.jround(82937 * 1.35))
+    # annualRun = (816 + 85.56 + 3040)*12 = 3941.56*12 = 47298.72
+    # expected = round(37030 + 47298.72) = round(84328.72) = 84329
+    check("total_expected", est.cost_breakdown.total.expected, 84329)
+    check("total_min", est.cost_breakdown.total.min, engine.jround(84329 * 0.82))
+    check("total_max", est.cost_breakdown.total.max, engine.jround(84329 * 1.35))
 
-    print("\n── ROI (deterministic) ──")
-    # value drivers: rag annualCalls = round(1875*365)=684375 *0.55 = 376406.25 -> round2 376406.25
-    #   summ annualCalls = round(1125*365)=410625 *0.45 = 184781.25
-    #   annualBenefit = 376406.25 + 184781.25 = 561187.5
-    approx("annual_benefit", est.roi_projection.annual_benefit, 561187.5)
+    print("\n── ROI (deterministic, transparent benefit basis) ──")
+    # value/call is built bottom-up: minutes ÷ 60 × loaded($75) × automation(70%)
+    #   per-minute value = 75/60 * 0.70 = 0.875
+    #   rag_qa     6 min => 5.25 ; summarization 4 min => 3.50
+    # rag  annualCalls = round(1875*365)=684375 * 5.25 = 3,592,968.75
+    # summ annualCalls = round(1125*365)=410625 * 3.50 = 1,437,187.50
+    #   annualBenefit = 3,592,968.75 + 1,437,187.50 = 5,030,156.25
+    approx("annual_benefit", est.roi_projection.annual_benefit, 5030156.25)
+    rag_vd = est.roi_projection.value_drivers[0]
+    check("driver_value_per_call", rag_vd.value_per_call, 5.25)
+    check("driver_minutes_per_call", rag_vd.minutes_per_call, 6)
+    check("driver_loaded_rate", rag_vd.loaded_hourly_rate, 75)
+    check("driver_automation_pct", rag_vd.automation_rate_percent, 70)
     check("payback_is_positive", est.roi_projection.payback_months is not None and est.roi_projection.payback_months > 0, True)
     check("roi_curve_points", len(est.roi_projection.curve), 13)
+
+    print("\n── Verdict (decisive call) ──")
+    # composite 64 >= 55 => comparison leans "ai"; archetype rag_assistant (not
+    # traditional) => decision build_with_ai / disposition go / recommend AI.
+    check("verdict_present", est.verdict is not None, True)
+    check("verdict_decision", est.verdict.decision, "build_with_ai")
+    check("verdict_disposition", est.verdict.disposition, "go")
+    check("verdict_recommend_ai", est.verdict.recommend_ai, True)
+
+    print("\n── Confidence (deterministic self-assessment) ──")
+    # detail 4/4=1.0 ; volume 4/4=1.0 ; decisive (clamp(9/15)+clamp(18/15))/2 =
+    #   (0.6+1.0)/2 = 0.8 ; grounded(new build) 0.5
+    # raw = 100*(0.30*1 + 0.30*1 + 0.30*0.8 + 0.10*0.5) = 100*0.89 = 89 ; high
+    check("confidence_present", est.confidence is not None, True)
+    check("confidence_score", est.confidence.score, 89)
+    check("confidence_level", est.confidence.level, "high")
+    check("confidence_factor_count", len(est.confidence.factors), 4)
 
     print("\n── Exports ──")
     pdf = estimation_to_pdf(est)
@@ -152,6 +212,32 @@ def main() -> int:
     integ = next(b for b in est2.cost_breakdown.development.breakdown if b.category == "Integrate with existing FastAPI")
     check("integration_hours", integ.hours, 88)
     check("repo_context_present", est2.repo_context is not None, True)
+    # Enhancement infra counts only NET-NEW Azure services (no existing hosting/DB).
+    enh_svcs = [s.service_name for s in est2.cost_breakdown.infrastructure.services]
+    check("enh_excludes_existing_hosting", "Azure Container Apps" not in enh_svcs, True)
+    check("enh_excludes_existing_db", "Azure Cosmos DB" not in enh_svcs, True)
+    check("enh_adds_ai_search", "Azure AI Search" in enh_svcs, True)
+
+    # ── Agentic mode: strict integrity guard must reproduce deterministic numbers ──
+    print("\n── Agentic pipeline (multi-agent ReAct, LLM off) ──")
+    from app.agentic import run_agentic_pipeline
+
+    ag = run_agentic_pipeline(INPUT, "est_agentic", "2026-06-20T00:00:00+00:00")
+    det = est  # the deterministic run from earlier in this test
+    check("agentic_total_min", ag.cost_breakdown.total.min, det.cost_breakdown.total.min)
+    check("agentic_total_expected", ag.cost_breakdown.total.expected, det.cost_breakdown.total.expected)
+    check("agentic_total_max", ag.cost_breakdown.total.max, det.cost_breakdown.total.max)
+    check("agentic_feasibility", ag.feasibility.score, det.feasibility.score)
+    check("agentic_roi_3yr", ag.roi_projection.three_year_value, det.roi_projection.three_year_value)
+    check("agentic_verdict", ag.verdict.decision if ag.verdict else None,
+          det.verdict.decision if det.verdict else None)
+    ar = ag.agent_run
+    check("agent_run_present", ar is not None, True)
+    check("agent_run_mode", ar.mode if ar else None, "agentic")
+    check("agent_run_integrity_verified", ar.integrity_verified if ar else None, True)
+    check("agent_run_full_path", len(ar.supervisor_path) if ar else 0, 8)
+    check("agent_run_tool_ledger", sorted({t.tool for t in ar.tool_ledger}) if ar else [],
+          ["comparison", "cost", "feasibility", "roi", "tokens"])
 
     print("\n" + ("=" * 48))
     if FAILS:

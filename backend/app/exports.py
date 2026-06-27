@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 
-from .schemas import Estimation
+from .shared.schemas import Estimation
 
 
 def _money(currency: str, n: float) -> str:
@@ -53,6 +53,14 @@ def estimation_to_pdf(est: Estimation) -> bytes:
     h2 = ParagraphStyle("h2", parent=base["Heading2"], textColor=accent, fontSize=13, spaceBefore=14, spaceAfter=6)
     body = ParagraphStyle("body", parent=base["Normal"], textColor=ink, fontSize=10, leading=15)
     big = ParagraphStyle("big", parent=base["Normal"], textColor=ink, fontSize=15, leading=18)
+    small = ParagraphStyle("small", parent=base["Normal"], textColor=muted, fontSize=9, leading=13)
+
+    # Disposition → tone colour for the verdict headline.
+    tone_colors = {
+        "go": colors.HexColor("#16a34a"),
+        "caution": colors.HexColor("#d97706"),
+        "stop": colors.HexColor("#dc2626"),
+    }
 
     story: list = []
 
@@ -60,6 +68,27 @@ def estimation_to_pdf(est: Estimation) -> bytes:
     mode = "Existing-app enhancement" if est.project_type == "enhancement" else "New build"
     story.append(Paragraph(f"AI Feasibility &amp; Cost Estimate · {mode} · {est.generated_at[:10]}", sub))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e2e8f0")))
+
+    # The call (canonical verdict) — the single decisive recommendation, willing
+    # to say "don't use AI". Optional for estimates persisted before it existed.
+    if est.verdict is not None:
+        v = est.verdict
+        tone = tone_colors.get(v.disposition, ink)
+        verdict_style = ParagraphStyle(
+            "verdict", parent=base["Normal"], textColor=tone,
+            fontSize=18, leading=21, spaceBefore=12, spaceAfter=2,
+        )
+        story.append(Paragraph(f"<b>{v.headline}</b>", verdict_style))
+        story.append(Paragraph(v.one_liner, body))
+        if est.confidence is not None:
+            cf = est.confidence
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                f"<b>Confidence: {cf.level.capitalize()} ({cf.score}/100)</b> — {cf.rationale}", small,
+            ))
+            marks = {"positive": "+", "neutral": "·", "negative": "−"}
+            for fac in cf.factors:
+                story.append(Paragraph(f"{marks.get(fac.impact, '·')} <b>{fac.label}:</b> {fac.detail}", small))
 
     # Headline.
     f = est.feasibility
@@ -139,6 +168,8 @@ def estimation_to_pdf(est: Estimation) -> bytes:
         ("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#eef2ff")),
     ]))
     story.append(roi_tbl)
+    if r.assumptions:
+        story.append(Paragraph("Benefit basis: " + " ".join(r.assumptions[:2]), small))
 
     # AI vs Standard.
     cmp = est.comparison
@@ -211,8 +242,13 @@ def estimation_to_excel(est: Estimation) -> bytes:
     ws["A1"].font = accent_font
     ws["A2"] = f"AI Feasibility & Cost · {'Enhancement' if est.project_type == 'enhancement' else 'New build'} · {est.generated_at[:10]}"
     f = est.feasibility
-    rows = [
-        ("Recommendation", f.archetype_label),
+    rows: list[tuple[str, object]] = [("Recommendation", f.archetype_label)]
+    if est.verdict is not None:
+        rows.append(("Verdict", est.verdict.headline))
+        rows.append(("Verdict rationale", est.verdict.one_liner))
+    if est.confidence is not None:
+        rows.append(("Confidence", f"{est.confidence.level.capitalize()} ({est.confidence.score}/100)"))
+    rows += [
         ("Feasibility score", f"{f.score}/100 ({f.rating})"),
         ("AI necessity", f.sub_scores.ai_necessity),
         ("Agentic suitability", f.sub_scores.agentic_suitability),
@@ -226,7 +262,18 @@ def estimation_to_excel(est: Estimation) -> bytes:
         ws.cell(row=r, column=1, value=label).font = bold
         ws.cell(row=r, column=2, value=val)
         r += 1
-    autosize(ws, [30, 40])
+
+    # Confidence factors — the deterministic signals behind the score.
+    if est.confidence is not None:
+        r += 1
+        ws.cell(row=r, column=1, value="Confidence factors").font = bold
+        ws.cell(row=r, column=2, value=est.confidence.rationale)
+        r += 1
+        for fac in est.confidence.factors:
+            ws.cell(row=r, column=1, value=f"  {fac.label} ({fac.impact})")
+            ws.cell(row=r, column=2, value=fac.detail)
+            r += 1
+    autosize(ws, [30, 60])
 
     # Sheet 2 — Cost breakdown.
     ws = wb.create_sheet("Cost Breakdown")
@@ -242,7 +289,7 @@ def estimation_to_excel(est: Estimation) -> bytes:
     ws.append(["AI tokens", "Annual (optimistic)", c.ai_tokens.annual_cost.optimistic])
     ws.append(["AI tokens", "Annual (expected)", c.ai_tokens.annual_cost.expected])
     ws.append(["AI tokens", "Annual (pessimistic)", c.ai_tokens.annual_cost.pessimistic])
-    ws.append(["Maintenance", f"{c.maintenance.monthly_hours}h/mo @ {cur}{c.maintenance.hourly_rate}/h", c.maintenance.annual_cost])
+    ws.append(["Maintenance", f"{c.maintenance.monthly_hours}h/mo @ {_money(cur, c.maintenance.hourly_rate)}/h", c.maintenance.annual_cost])
     ws.append(["TOTAL", "First-year expected", c.total.expected])
     ws.cell(row=ws.max_row, column=1).font = bold
     ws.cell(row=ws.max_row, column=3).font = bold
@@ -268,16 +315,29 @@ def estimation_to_excel(est: Estimation) -> bytes:
     ws.append(["3-year net value", roi.three_year_value])
     ws.append(["3-year ROI %", roi.roi_percent])
     ws.append([])
-    ws.append(["Use case", "Value/call", "Annual calls", "Annual value"])
-    style_header(ws, ws.max_row, 4)
+    ws.append(["Use case", "Minutes/call", "Loaded $/hr", "Automation %", "Value/call", "Annual calls", "Annual value"])
+    style_header(ws, ws.max_row, 7)
     for d in roi.value_drivers:
-        ws.append([d.use_case, d.value_per_call, d.annual_calls, d.annual_value])
+        ws.append([
+            d.use_case,
+            d.minutes_per_call if d.minutes_per_call is not None else "override",
+            d.loaded_hourly_rate if d.loaded_hourly_rate is not None else "—",
+            d.automation_rate_percent if d.automation_rate_percent is not None else "—",
+            d.value_per_call,
+            d.annual_calls,
+            d.annual_value,
+        ])
+    ws.append([])
+    ws.append(["Basis"])
+    style_header(ws, ws.max_row, 1)
+    for a in roi.assumptions:
+        ws.append([a])
     ws.append([])
     ws.append(["Month", "Cumulative net"])
     style_header(ws, ws.max_row, 2)
     for pt in roi.curve:
         ws.append([pt.month, pt.cumulative_net])
-    autosize(ws, [24, 18, 16, 16])
+    autosize(ws, [28, 13, 12, 14, 12, 14, 16])
 
     # Sheet 5 — Recommendations.
     ws = wb.create_sheet("Recommendations")

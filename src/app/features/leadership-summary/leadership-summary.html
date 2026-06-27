@@ -1,0 +1,164 @@
+<div class="summary">
+  @if (estimation(); as e) {
+    <!-- ── Header ── -->
+    <div class="summary-head">
+      <a class="back-link" [routerLink]="['/estimate', e.id, 'report']">← Full report</a>
+      <div class="title-row">
+        <div>
+          <span class="eyebrow">Leadership summary</span>
+          <h2>{{ e.projectName }}</h2>
+          <p class="meta">
+            @if (e.projectType === 'enhancement') {
+              <span class="mode-chip">Enhancement</span>
+            }
+            @if (e.industryDomain) {
+              <span class="dim">{{ e.industryDomain }} · </span>
+            }
+            Generated {{ e.generatedAt | date: 'MMM d, y' }}
+          </p>
+        </div>
+        <div class="head-actions">
+          <a class="btn btn-secondary btn-sm" [href]="pdfHref(e.id)" target="_blank" rel="noopener" download>↓ PDF</a>
+          <a class="btn btn-secondary btn-sm" [href]="excelHref(e.id)" target="_blank" rel="noopener" download>↓ Excel</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Verdict hero ── -->
+    <div class="card card-glow verdict-hero" [class]="e.verdict ? 'tone-' + e.verdict.disposition : 'tone-caution'"
+         appTilt [tiltMax]="5">
+      <span class="tilt-sheen" aria-hidden="true"></span>
+      <div class="verdict-body tilt-layer-sm">
+        @if (e.verdict; as v) {
+          <span class="verdict-eyebrow">The call · builds as {{ e.feasibility.archetypeLabel }}</span>
+          <h1 class="verdict-headline tone-text-{{ v.disposition }}">{{ v.headline }}</h1>
+          <p class="verdict-oneliner">{{ v.oneLiner }}</p>
+        } @else {
+          <span class="verdict-eyebrow">Recommended approach</span>
+          <h1 class="verdict-headline">{{ e.feasibility.archetypeLabel }}</h1>
+          <p class="verdict-oneliner">{{ e.feasibility.rationale }}</p>
+        }
+
+        @if (e.confidence; as c) {
+          <div class="conf-line">
+            <span class="conf-chip conf-{{ c.level }}">{{ c.level }} confidence · {{ c.score }}/100</span>
+            <span class="conf-rationale dim">{{ c.rationale }}</span>
+          </div>
+          <div class="conf-factors">
+            @for (f of c.factors; track f.label) {
+              <span class="conf-factor impact-{{ f.impact }}" [title]="f.detail">{{ f.label }}</span>
+            }
+          </div>
+        }
+      </div>
+      <div class="verdict-score tilt-layer">
+        <span class="verdict-score-value">{{ e.feasibility.score }}</span>
+        <span class="verdict-score-label">feasibility / 100</span>
+      </div>
+    </div>
+
+    <!-- ── Key numbers ── -->
+    <div class="kpi-band">
+      <div class="card kpi">
+        <span class="kpi-label">First-year cost</span>
+        <span class="kpi-value mono">{{ e.costBreakdown.total.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+        <span class="kpi-sub mono dim">
+          {{ e.costBreakdown.total.min | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }} –
+          {{ e.costBreakdown.total.max | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}
+        </span>
+      </div>
+
+      @if (e.roiProjection; as roi) {
+        <div class="card kpi">
+          <span class="kpi-label">Payback</span>
+          <span class="kpi-value mono">
+            @if (roi.paybackMonths !== null) {
+              {{ roi.paybackMonths }}<span class="kpi-unit"> mo</span>
+            } @else {
+              <span class="kpi-unit">—</span>
+            }
+          </span>
+          <span class="kpi-sub dim">to recover the build</span>
+        </div>
+        <div class="card kpi">
+          <span class="kpi-label">3-year ROI</span>
+          <span class="kpi-value mono" [class.pos]="roi.roiPercent >= 0" [class.neg]="roi.roiPercent < 0">{{ roi.roiPercent }}%</span>
+          <span class="kpi-sub dim">net of total investment</span>
+        </div>
+        <div class="card kpi kpi-hero">
+          <span class="kpi-label">3-year net value</span>
+          <span class="kpi-value mono" [class.pos]="roi.threeYearValue >= 0" [class.neg]="roi.threeYearValue < 0">
+            {{ roi.threeYearValue | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}
+          </span>
+          <span class="kpi-sub dim">benefit minus all costs</span>
+        </div>
+      }
+    </div>
+
+    <!-- ── AI vs standard cost face-off ── -->
+    <section class="section">
+      <h4 class="section-title">AI vs standard — at a glance</h4>
+      <div class="faceoff">
+        <div class="card faceoff-card"
+             [class.faceoff-win]="e.comparison.recommendation === 'ai'">
+          <div class="faceoff-head">
+            <h5>Build with AI</h5>
+            @if (e.comparison.recommendation === 'ai') { <span class="win-tag">recommended</span> }
+          </div>
+          <span class="faceoff-cost mono">{{ e.comparison.aiApproach.totalCost.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          <div class="faceoff-meta">
+            <span>{{ e.comparison.aiApproach.timelineWeeks }} wks</span>
+            <span>{{ e.comparison.aiApproach.teamSize }} people</span>
+            <span class="mono">{{ e.comparison.aiApproach.monthlyRunCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}/mo run</span>
+          </div>
+        </div>
+
+        <div class="faceoff-delta">
+          <span class="delta-label dim">{{ costDelta() >= 0 ? 'AI costs' : 'AI saves' }}</span>
+          <span class="delta-value mono">{{ money(costDelta() >= 0 ? costDelta() : -costDelta()) }}</span>
+          <span class="delta-sub dim">on first-year build</span>
+        </div>
+
+        <div class="card faceoff-card"
+             [class.faceoff-win]="e.comparison.recommendation === 'standard'">
+          <div class="faceoff-head">
+            <h5>Standard software</h5>
+            @if (e.comparison.recommendation === 'standard') { <span class="win-tag">recommended</span> }
+          </div>
+          <span class="faceoff-cost mono">{{ e.comparison.standardApproach.totalCost.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          <div class="faceoff-meta">
+            <span>{{ e.comparison.standardApproach.timelineWeeks }} wks</span>
+            <span>{{ e.comparison.standardApproach.teamSize }} people</span>
+            <span class="mono">{{ e.comparison.standardApproach.monthlyRunCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}/mo run</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Why ── -->
+    <section class="section">
+      <h4 class="section-title">Why this call</h4>
+      <div class="card detail-card why-card">
+        <ul class="why-list">
+          @for (point of whyPoints(); track point) {
+            <li>{{ point }}</li>
+          }
+        </ul>
+      </div>
+    </section>
+
+    <!-- ── Footer cross-links ── -->
+    <div class="summary-foot">
+      <a class="btn btn-primary" [routerLink]="['/estimate', e.id, 'report']">Open the full report →</a>
+      <span class="foot-note dim">Every figure here is drawn from the same estimate — no separate modelling.</span>
+    </div>
+  } @else if (estimation() === null) {
+    <div class="card empty">
+      <p class="empty-title">Estimate not found</p>
+      <p class="empty-sub">This estimate may have been removed or the link is incorrect.</p>
+      <a class="btn btn-secondary" routerLink="/history">Back to history</a>
+    </div>
+  } @else {
+    <app-loading-spinner label="Loading summary…" />
+  }
+</div>

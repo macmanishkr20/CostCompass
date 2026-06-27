@@ -15,6 +15,15 @@ DEV_HOURLY_RATE = 115
 MAINT_HOURLY_RATE = 95
 HOURS_PER_DEV_WEEK = 32  # effective, not nominal
 
+# ── ROI benefit basis ──
+# The benefit side of ROI is built bottom-up, not from an opaque "$/call":
+#   value/call = (minutes_per_call ÷ 60) × loaded_hourly_rate × (automation_rate% ÷ 100)
+# so every figure a leader sees traces to two dials they can defend — the
+# fully-loaded cost of the person whose work is offset, and the share of calls
+# AI actually handles end-to-end (deflection) rather than assuming a perfect 100%.
+LOADED_HOURLY_RATE = 75        # fully-loaded labour cost of the offset worker
+AUTOMATION_RATE_PERCENT = 70   # share of calls AI handles without human redo
+
 COMPLEXITY_HOURS: dict[str, int] = {
     "low": 24,
     "medium": 64,
@@ -54,22 +63,28 @@ class TaskProfile(TypedDict):
     ai_n: int      # contribution to AI-necessity
     agentic: int   # contribution to agentic suitability
     trad: int      # contribution to traditional suitability
-    value_per_call: float  # USD of manual labour offset by automating one call
+    minutes_per_call: float  # minutes of manual work one automated call replaces
 
 
 TASK_PROFILES: dict[str, TaskProfile] = {
-    "text_classification": {"in_tokens": 800, "out_tokens": 80, "model": "gpt-4o-mini", "ai_n": 55, "agentic": 20, "trad": 70, "value_per_call": 0.08},
-    "summarization": {"in_tokens": 4000, "out_tokens": 600, "model": "gpt-4o-mini", "ai_n": 66, "agentic": 25, "trad": 45, "value_per_call": 0.45},
-    "code_generation": {"in_tokens": 2500, "out_tokens": 1200, "model": "claude-sonnet-4", "ai_n": 80, "agentic": 55, "trad": 25, "value_per_call": 1.20},
-    "conversational_agent": {"in_tokens": 1500, "out_tokens": 500, "model": "gpt-4o", "ai_n": 80, "agentic": 72, "trad": 25, "value_per_call": 0.60},
-    "rag_qa": {"in_tokens": 3500, "out_tokens": 700, "model": "gpt-4o-mini", "ai_n": 78, "agentic": 55, "trad": 30, "value_per_call": 0.55},
-    "multi_agent_orchestration": {"in_tokens": 6000, "out_tokens": 2500, "model": "gpt-4o", "ai_n": 88, "agentic": 92, "trad": 15, "value_per_call": 2.50},
-    "document_analysis": {"in_tokens": 8000, "out_tokens": 1000, "model": "gpt-4o", "ai_n": 75, "agentic": 50, "trad": 35, "value_per_call": 1.40},
-    "image_analysis": {"in_tokens": 1200, "out_tokens": 400, "model": "gpt-4o", "ai_n": 82, "agentic": 35, "trad": 30, "value_per_call": 0.35},
-    "translation": {"in_tokens": 1000, "out_tokens": 1000, "model": "gemini-2-flash", "ai_n": 60, "agentic": 20, "trad": 55, "value_per_call": 0.20},
-    "data_extraction": {"in_tokens": 2000, "out_tokens": 400, "model": "gpt-4o-mini", "ai_n": 62, "agentic": 35, "trad": 60, "value_per_call": 0.30},
-    "recommendation": {"in_tokens": 1500, "out_tokens": 300, "model": "gemini-2-pro", "ai_n": 70, "agentic": 40, "trad": 50, "value_per_call": 0.25},
-    "anomaly_detection": {"in_tokens": 1000, "out_tokens": 120, "model": "gemini-2-flash", "ai_n": 58, "agentic": 30, "trad": 72, "value_per_call": 0.40},
+    "text_classification": {"in_tokens": 800, "out_tokens": 80, "model": "gpt-4o-mini", "ai_n": 55, "agentic": 20, "trad": 70, "minutes_per_call": 1},
+    "summarization": {"in_tokens": 4000, "out_tokens": 600, "model": "gpt-4o-mini", "ai_n": 66, "agentic": 25, "trad": 45, "minutes_per_call": 4},
+    "code_generation": {"in_tokens": 2500, "out_tokens": 1200, "model": "claude-sonnet-4", "ai_n": 80, "agentic": 55, "trad": 25, "minutes_per_call": 20},
+    "conversational_agent": {"in_tokens": 1500, "out_tokens": 500, "model": "gpt-4o", "ai_n": 80, "agentic": 72, "trad": 25, "minutes_per_call": 6},
+    "rag_qa": {"in_tokens": 3500, "out_tokens": 700, "model": "gpt-4o-mini", "ai_n": 78, "agentic": 55, "trad": 30, "minutes_per_call": 6},
+    "multi_agent_orchestration": {"in_tokens": 6000, "out_tokens": 2500, "model": "gpt-4o", "ai_n": 88, "agentic": 92, "trad": 15, "minutes_per_call": 25},
+    "document_analysis": {"in_tokens": 8000, "out_tokens": 1000, "model": "gpt-4o", "ai_n": 75, "agentic": 50, "trad": 35, "minutes_per_call": 15},
+    "image_analysis": {"in_tokens": 1200, "out_tokens": 400, "model": "gpt-4o", "ai_n": 82, "agentic": 35, "trad": 30, "minutes_per_call": 4},
+    "translation": {"in_tokens": 1000, "out_tokens": 1000, "model": "gemini-2-flash", "ai_n": 60, "agentic": 20, "trad": 55, "minutes_per_call": 8},
+    "data_extraction": {"in_tokens": 2000, "out_tokens": 400, "model": "gpt-4o-mini", "ai_n": 62, "agentic": 35, "trad": 60, "minutes_per_call": 6},
+    "recommendation": {"in_tokens": 1500, "out_tokens": 300, "model": "gemini-2-pro", "ai_n": 70, "agentic": 40, "trad": 50, "minutes_per_call": 3},
+    "anomaly_detection": {"in_tokens": 1000, "out_tokens": 120, "model": "gemini-2-flash", "ai_n": 58, "agentic": 30, "trad": 72, "minutes_per_call": 5},
+    # Deterministic capabilities that standard software handles best. Low AI-necessity
+    # so a product built mostly of these can honestly land on "Standard" / "Don't use AI"
+    # instead of being force-fit into an AI task type (the lowest of which was 55).
+    "rules_workflow": {"in_tokens": 600, "out_tokens": 80, "model": "gpt-4o-mini", "ai_n": 22, "agentic": 12, "trad": 88, "minutes_per_call": 2},
+    "crud_lookup": {"in_tokens": 400, "out_tokens": 60, "model": "gpt-4o-mini", "ai_n": 15, "agentic": 8, "trad": 92, "minutes_per_call": 1},
+    "threshold_alerting": {"in_tokens": 500, "out_tokens": 60, "model": "gpt-4o-mini", "ai_n": 28, "agentic": 15, "trad": 85, "minutes_per_call": 2},
 }
 
 # Valid task types (kept here so the classifier can validate against the catalog).

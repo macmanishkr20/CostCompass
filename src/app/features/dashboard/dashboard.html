@@ -1,23 +1,41 @@
 <div class="dashboard">
+  <!-- ── Hero ── -->
+  <header class="hero card card-bordered animate-fade-in-up">
+    <span class="hero-orb hero-orb-a" aria-hidden="true"></span>
+    <span class="hero-orb hero-orb-b" aria-hidden="true"></span>
+    <div class="hero-content">
+      <span class="badge badge-gold hero-badge">AI Feasibility · FinOps Intelligence</span>
+      <h1 class="hero-title">Decide AI builds with <span class="text-gradient-prestige">conviction</span>.</h1>
+      <p class="hero-sub">
+        CostCompass scores feasibility, prices every dollar deterministically, and pits AI against
+        standard software — so leadership sees the trade-off, not a guess.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-gold btn-lg" routerLink="/estimate/new">Start an estimate</a>
+        <a class="btn btn-secondary btn-lg" routerLink="/estimate/enhance">Analyze a repo</a>
+      </div>
+    </div>
+  </header>
+
   <!-- ── Stats ── -->
   @if (stats(); as s) {
     <div class="stats-grid">
-      <div class="card stat-card animate-fade-in-up">
+      <div class="card stat-card kpi-tile animate-fade-in-up">
         <span class="stat-label">Total estimates</span>
         <span class="stat-value">{{ s.totalEstimates }}</span>
         <span class="stat-sub">{{ s.activeProjects }} active</span>
       </div>
-      <div class="card stat-card animate-fade-in-up">
+      <div class="card stat-card kpi-tile animate-fade-in-up">
         <span class="stat-label">Avg feasibility</span>
         <span class="stat-value">{{ s.avgFeasibilityScore }}<span class="unit">/100</span></span>
         <span class="stat-sub text-success">across portfolio</span>
       </div>
-      <div class="card stat-card animate-fade-in-up">
+      <div class="card stat-card kpi-tile kpi-gold animate-fade-in-up">
         <span class="stat-label">Projected cost</span>
         <span class="stat-value">{{ s.totalProjectedCost | currency: s.currency : 'symbol' : '1.0-0' }}</span>
         <span class="stat-sub">expected, all estimates</span>
       </div>
-      <div class="card stat-card animate-fade-in-up">
+      <div class="card stat-card kpi-tile animate-fade-in-up">
         <span class="stat-label">Active projects</span>
         <span class="stat-value">{{ s.activeProjects }}</span>
         <span class="stat-sub">in draft or estimating</span>
@@ -29,24 +47,26 @@
 
   <!-- ── Quick actions ── -->
   <div class="actions-grid">
-    <a class="card card-hover action" routerLink="/estimate/new">
-      <div class="action-icon blue">
+    <a class="card card-bordered action" routerLink="/estimate/new" appTilt [tiltMax]="7">
+      <span class="tilt-sheen" aria-hidden="true"></span>
+      <div class="action-icon blue tilt-layer-sm">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
       </div>
-      <div class="action-text">
+      <div class="action-text tilt-layer-sm">
         <span class="action-title">New AI estimate</span>
         <span class="action-sub">Score a greenfield idea and project its cost</span>
       </div>
       <span class="action-arrow">→</span>
     </a>
 
-    <a class="card card-hover action" routerLink="/estimate/enhance">
-      <div class="action-icon purple">
+    <a class="card card-bordered action" routerLink="/estimate/enhance" appTilt [tiltMax]="7">
+      <span class="tilt-sheen" aria-hidden="true"></span>
+      <div class="action-icon purple tilt-layer-sm">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6 4 4 6-6" /><path d="M20 9V3h-6" /></svg>
       </div>
-      <div class="action-text">
+      <div class="action-text tilt-layer-sm">
         <span class="action-title">Enhance existing app</span>
         <span class="action-sub">Analyze a GitHub repo and scope AI add-ons</span>
       </div>

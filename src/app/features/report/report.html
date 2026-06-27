@@ -17,6 +17,7 @@
           </p>
         </div>
         <div class="head-actions">
+          <a class="btn btn-primary btn-sm" [routerLink]="['/estimate', e.id, 'summary']">Leadership view →</a>
           <a class="btn btn-secondary btn-sm" [href]="pdfHref(e.id)" target="_blank" rel="noopener" download>↓ PDF</a>
           <a class="btn btn-secondary btn-sm" [href]="excelHref(e.id)" target="_blank" rel="noopener" download>↓ Excel</a>
           <app-score-badge [score]="e.feasibility.score" />
@@ -24,14 +25,27 @@
       </div>
     </div>
 
-    <!-- ── Recommendation banner ── -->
-    <div class="card card-glow rec-banner">
-      <div class="rec-main">
-        <span class="rec-eyebrow">Recommended approach</span>
-        <h3 class="rec-title">{{ e.feasibility.archetypeLabel }}</h3>
-        <p class="rec-rationale">{{ e.feasibility.rationale }}</p>
+    <!-- ── Verdict banner ── -->
+    <div class="card card-glow rec-banner" [class]="e.verdict ? 'verdict-' + e.verdict.disposition : ''"
+         appTilt [tiltMax]="4">
+      <span class="tilt-sheen" aria-hidden="true"></span>
+      <div class="rec-main tilt-layer-sm">
+        @if (e.verdict; as v) {
+          <span class="rec-eyebrow">Verdict · builds as {{ e.feasibility.archetypeLabel }}</span>
+          <h3 class="rec-title verdict-headline verdict-headline-{{ v.disposition }}">{{ v.headline }}</h3>
+          <p class="rec-rationale">{{ v.oneLiner }}</p>
+        } @else {
+          <span class="rec-eyebrow">Recommended approach</span>
+          <h3 class="rec-title">{{ e.feasibility.archetypeLabel }}</h3>
+          <p class="rec-rationale">{{ e.feasibility.rationale }}</p>
+        }
+        @if (e.confidence; as c) {
+          <span class="conf-chip conf-{{ c.level }}" title="{{ c.rationale }}">
+            {{ c.level }} confidence · {{ c.score }}/100
+          </span>
+        }
       </div>
-      <div class="rec-cost">
+      <div class="rec-cost tilt-layer">
         <span class="rec-cost-label">Expected first-year cost</span>
         <span class="rec-cost-value mono">
           {{ e.costBreakdown.total.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}
@@ -42,6 +56,124 @@
         </span>
       </div>
     </div>
+
+    <!-- ── Recommended architecture (ReAct solution architect) ── -->
+    @if (e.solutionProposal; as sp) {
+      <section class="section">
+        <h4 class="section-title">Recommended architecture</h4>
+        <div class="card detail-card arch-proposal">
+          <div class="arch-proposal-head">
+            <div class="arch-proposal-id">
+              <span class="arch-proposal-eyebrow">Best-fit delivery platform</span>
+              <h3 class="arch-proposal-platform">{{ sp.platformLabel }}</h3>
+            </div>
+            <div class="arch-proposal-chips">
+              <span class="svc-chip cost-model-chip">{{ costModelLabel(sp.costModel) }}</span>
+              <span class="svc-chip src-chip src-{{ sp.source }}">{{ solutionSourceLabel(sp.source) }}</span>
+            </div>
+          </div>
+          <p class="arch-proposal-rationale">{{ sp.rationale }}</p>
+
+          @if (sp.alternatives.length > 0) {
+            <div class="arch-alts">
+              <div class="detail-head">Alternatives considered</div>
+              @for (alt of sp.alternatives; track alt.platform) {
+                <div class="arch-alt-row">
+                  <span class="arch-alt-name">{{ platformLabel(alt.platform) }}</span>
+                  <span class="arch-alt-why dim">{{ alt.whyNot }}</span>
+                </div>
+              }
+            </div>
+          }
+
+          @if (sp.reasoningSteps.length > 0) {
+            <details class="arch-trace">
+              <summary>Agent reasoning trace · {{ sp.reasoningSteps.length }} steps</summary>
+              <ol class="arch-trace-list">
+                @for (step of sp.reasoningSteps; track $index) {
+                  <li class="arch-trace-step">{{ step }}</li>
+                }
+              </ol>
+            </details>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- ── Agentic run (multi-agent ReAct orchestration) ── -->
+    @if (e.agentRun; as ar) {
+      <section class="section">
+        <h4 class="section-title">AI agent run</h4>
+        <div class="card detail-card agent-run">
+          <div class="agent-run-head">
+            <div class="agent-run-id">
+              <span class="arch-proposal-eyebrow">Orchestration</span>
+              <h3 class="arch-proposal-platform">{{ ar.mode === 'agentic' ? 'Multi-agent ReAct' : 'Deterministic' }}</h3>
+            </div>
+            <div class="arch-proposal-chips">
+              <span class="svc-chip" [class.integrity-ok]="ar.integrityVerified" [class.integrity-warn]="!ar.integrityVerified">
+                {{ ar.integrityVerified ? '✓ Numbers integrity-verified' : '⚠ Numbers from safe recompute' }}
+              </span>
+              <span class="svc-chip">{{ ar.llmUsed ? 'LLM agents' : 'Heuristic agents' }}</span>
+              @if (ar.revisions > 0) {
+                <span class="svc-chip cost-model-chip">{{ ar.revisions }} revision{{ ar.revisions === 1 ? '' : 's' }}</span>
+              }
+            </div>
+          </div>
+
+          @if (ar.supervisorPath.length > 0) {
+            <div class="agent-path">
+              @for (node of ar.supervisorPath; track $index; let last = $last) {
+                <span class="agent-node">{{ agentLabel(node) }}</span>
+                @if (!last) { <span class="agent-arrow" aria-hidden="true">→</span> }
+              }
+            </div>
+          }
+
+          @if (ar.critiques.length > 0) {
+            <div class="agent-critiques">
+              <div class="detail-head">Risk-critic findings</div>
+              @for (c of ar.critiques; track $index) {
+                <div class="agent-critique">
+                  <span class="badge {{ severityClass(c.severity) }}">{{ c.severity }}</span>
+                  <span class="agent-critique-issue">{{ c.issue }}</span>
+                  <span class="dim">→ {{ agentLabel(c.target) }}</span>
+                </div>
+              }
+            </div>
+          }
+
+          @if (ar.steps.length > 0) {
+            <details class="arch-trace">
+              <summary>Agent reasoning transcript · {{ ar.steps.length }} steps</summary>
+              <ol class="agent-step-list">
+                @for (s of ar.steps; track $index) {
+                  <li class="agent-step">
+                    <span class="agent-step-tag tag-{{ s.kind }}">{{ s.agent }} · {{ s.kind }}</span>
+                    <span class="agent-step-content">{{ s.content }}</span>
+                  </li>
+                }
+              </ol>
+            </details>
+          }
+
+          @if (ar.toolLedger.length > 0) {
+            <details class="arch-trace">
+              <summary>Deterministic tool ledger · {{ ar.toolLedger.length }} computations</summary>
+              <div class="tool-ledger">
+                @for (t of ar.toolLedger; track $index) {
+                  <div class="ledger-row">
+                    <span class="ledger-tool mono">{{ t.tool }}</span>
+                    <span class="dim">{{ t.agent }}</span>
+                    <span class="ledger-hash mono dim">{{ t.outputHash.slice(0, 12) }}…</span>
+                  </div>
+                }
+              </div>
+            </details>
+          }
+        </div>
+      </section>
+    }
 
     <!-- ── Existing application (enhancement mode) ── -->
     @if (e.repoContext; as repo) {
@@ -102,6 +234,27 @@
       </div>
     </section>
 
+    <!-- ── Estimate confidence ── -->
+    @if (e.confidence; as c) {
+      <section class="section">
+        <h4 class="section-title">Estimate confidence</h4>
+        <div class="card detail-card confidence">
+          <div class="conf-head">
+            <span class="conf-chip conf-{{ c.level }}">{{ c.level }} · {{ c.score }}/100</span>
+            <p class="conf-rationale">{{ c.rationale }}</p>
+          </div>
+          <div class="conf-factors">
+            @for (f of c.factors; track f.label) {
+              <div class="conf-factor impact-{{ f.impact }}">
+                <span class="conf-factor-label">{{ f.label }}</span>
+                <span class="conf-factor-detail dim">{{ f.detail }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+    }
+
     <!-- ── Cost breakdown ── -->
     <section class="section">
       <h4 class="section-title">Cost breakdown</h4>
@@ -119,7 +272,11 @@
         <div class="card cost-card">
           <span class="cost-label">AI tokens</span>
           <span class="cost-value mono">{{ e.costBreakdown.aiTokens.annualCost.expected | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
-          <span class="cost-sub">/yr expected</span>
+          @if (e.costBreakdown.infrastructure.metersTokens === false) {
+            <span class="cost-sub">bundled into Copilot seats</span>
+          } @else {
+            <span class="cost-sub">/yr expected</span>
+          }
         </div>
         <div class="card cost-card">
           <span class="cost-label">Maintenance</span>
@@ -150,12 +307,45 @@
 
       <!-- Infra detail -->
       <div class="card detail-card">
-        <div class="detail-head">Azure services <span class="dim">(monthly)</span></div>
+        <div class="detail-head">
+          {{ e.costBreakdown.infrastructure.platformLabel || 'Azure' }} infrastructure
+          @if (e.costBreakdown.infrastructure.costModel; as cm) {
+            <span class="svc-chip cost-model-chip">{{ costModelLabel(cm) }}</span>
+          }
+          <span class="dim">(monthly)</span>
+        </div>
+        @if (e.costBreakdown.infrastructure.notes?.length) {
+          <ul class="platform-notes">
+            @for (note of e.costBreakdown.infrastructure.notes; track note) {
+              <li>{{ note }}</li>
+            }
+          </ul>
+        }
         @for (svc of e.costBreakdown.infrastructure.services; track svc.serviceName) {
-          <div class="detail-row">
-            <span>{{ svc.serviceName }} <span class="dim">· {{ svc.tier }}</span></span>
-            <span class="dim svc-detail">{{ svc.details }}</span>
-            <span class="mono">{{ svc.monthlyCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
+          <div class="svc-row" [class.svc-excluded]="!svc.includedInTotal">
+            <div class="svc-info">
+              <div class="svc-name">
+                {{ svc.serviceName }}
+                @if (svc.tier) { <span class="dim">· {{ svc.tier }}</span> }
+                @if (!svc.includedInTotal) { <span class="svc-tag">counted in AI tokens</span> }
+              </div>
+              @if (svc.details) { <div class="svc-detail dim">{{ svc.details }}</div> }
+              <div class="svc-meta">
+                <span class="svc-chip">{{ svc.category }}</span>
+                @if (svc.region) { <span class="svc-chip">{{ svc.region }}</span> }
+                @if (svc.quantity && svc.unit) {
+                  <span class="svc-chip">{{ svc.quantity | number: '1.0-2' }} × {{ svc.unit }}</span>
+                }
+                <span class="svc-chip src-{{ svc.priceSource }}">{{ priceSourceLabel(svc.priceSource) }}</span>
+                @if (svc.azurePricingUrl) {
+                  <a class="svc-calc" [href]="svc.azurePricingUrl" target="_blank" rel="noopener">Calculator ↗</a>
+                }
+              </div>
+            </div>
+            <div class="svc-cost mono">
+              {{ svc.monthlyCost | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}
+              @if (!svc.includedInTotal) { <span class="svc-cost-note dim">excl.</span> }
+            </div>
           </div>
         }
       </div>
@@ -208,6 +398,36 @@
         </span>
         <p>{{ e.comparison.summary }}</p>
       </div>
+
+      @if (capabilitySplit().hasSplit) {
+        <div class="card split-card">
+          <div class="split-head">Where each capability lands</div>
+          <div class="split-grid">
+            <div class="split-col">
+              <div class="split-label split-ai">
+                <span class="dot ai"></span> Build with AI
+                <span class="split-count">{{ capabilitySplit().ai.length }}</span>
+              </div>
+              @for (uc of capabilitySplit().ai; track uc.useCaseName) {
+                <div class="split-item">{{ uc.useCaseName }}</div>
+              } @empty {
+                <div class="split-empty">No capability needs an LLM here.</div>
+              }
+            </div>
+            <div class="split-col">
+              <div class="split-label split-std">
+                <span class="dot std"></span> Standard software
+                <span class="split-count">{{ capabilitySplit().standard.length }}</span>
+              </div>
+              @for (uc of capabilitySplit().standard; track uc.useCaseName) {
+                <div class="split-item">{{ uc.useCaseName }}</div>
+              } @empty {
+                <div class="split-empty">Every capability here justifies AI.</div>
+              }
+            </div>
+          </div>
+        </div>
+      }
 
       <div class="approach-grid">
         <div class="card approach-card">
@@ -304,12 +524,32 @@
             </div>
             @for (vd of roi.valueDrivers; track vd.useCase) {
               <div class="token-row driver-row">
-                <span>{{ vd.useCase }}</span>
+                <span>
+                  {{ vd.useCase }}
+                  @if (vd.minutesPerCall != null) {
+                    <small class="driver-basis">
+                      {{ vd.minutesPerCall }} min × {{ vd.loadedHourlyRate | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}/hr × {{ vd.automationRatePercent }}%
+                    </small>
+                  } @else {
+                    <small class="driver-basis">flat per-call override</small>
+                  }
+                </span>
                 <span class="ta-r mono dim">{{ vd.annualCalls | number }}</span>
                 <span class="ta-r mono dim">{{ vd.valuePerCall | currency: e.costBreakdown.currency : 'symbol' : '1.2-2' }}</span>
                 <span class="ta-r mono">{{ vd.annualValue | currency: e.costBreakdown.currency : 'symbol' : '1.0-0' }}</span>
               </div>
             }
+          </div>
+        }
+
+        @if (roi.assumptions.length > 0) {
+          <div class="card detail-card roi-assumptions">
+            <div class="detail-head">How we computed this</div>
+            <ul class="assumption-list">
+              @for (a of roi.assumptions; track a) {
+                <li>{{ a }}</li>
+              }
+            </ul>
           </div>
         }
       </section>

@@ -13,12 +13,13 @@ import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from .pipeline import SSE_STEPS, run_pipeline
+from .orchestration import SSE_STEPS, run_estimation
 from .repository import get_repository
-from .schemas import Estimation, ProjectInput
+from .shared.schemas import Estimation, ProjectInput
 from .exports import estimation_to_excel, estimation_to_pdf
+from .health import check_azure_openai, check_cosmos
 
 router = APIRouter(prefix="/api")
 
@@ -34,20 +35,37 @@ def _now_iso() -> str:
 
 @router.get("/health")
 def health() -> dict:
-    from .config import get_settings
+    from .shared.config import get_settings
 
     s = get_settings()
     return {
         "status": "ok",
-        "version": "0.4.0",
+        "version": "0.5.0",
         "llmClassifier": s.llm_enabled,
+        "llmProvider": s.llm_provider,
         "persistence": "cosmos" if s.cosmos_enabled else "file",
+        "agenticMode": s.agentic_mode,
+        "orchestration": "agentic" if s.agentic_mode else "deterministic",
     }
+
+
+@router.get("/health/cosmos")
+def health_cosmos() -> JSONResponse:
+    """Live Cosmos DB probe: a real authenticated read. 200 when healthy, 503 when not."""
+    result = check_cosmos()
+    return JSONResponse(result, status_code=200 if result.get("ok") else 503)
+
+
+@router.get("/health/azure-openai")
+def health_azure_openai() -> JSONResponse:
+    """Live Azure OpenAI probe: a 1-token chat completion. 200 when healthy, 503 when not."""
+    result = check_azure_openai()
+    return JSONResponse(result, status_code=200 if result.get("ok") else 503)
 
 
 @router.post("/estimations", response_model=Estimation, response_model_by_alias=True)
 def create_estimation(payload: ProjectInput) -> Estimation:
-    est = run_pipeline(payload, _new_id(), _now_iso())
+    est = run_estimation(payload, _new_id(), _now_iso())
     get_repository().save(est)
     return est
 
@@ -59,7 +77,7 @@ def stream_estimation(payload: ProjectInput) -> StreamingResponse:
 
     def event_gen():
         # Compute up front (deterministic, fast); stream the progress narrative.
-        est = run_pipeline(payload, est_id, generated_at)
+        est = run_estimation(payload, est_id, generated_at)
         get_repository().save(est)
 
         for step in SSE_STEPS:

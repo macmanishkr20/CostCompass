@@ -6,49 +6,64 @@
 
 /* ── CSS Custom Properties ──────────────────────────────────────── */
 :root {
-  /* ─ Color Palette ─ */
-  --bg-primary:       #06090f;
-  --bg-secondary:     #0d1117;
-  --bg-tertiary:      #161b22;
-  --bg-card:          rgba(22, 27, 34, 0.7);
-  --bg-card-hover:    rgba(30, 37, 48, 0.85);
-  --bg-glass:         rgba(13, 17, 23, 0.6);
-  --bg-input:         #0d1117;
-  --bg-sidebar:       #0a0e14;
+  /* ─ Color Palette · light "EY prestige" (graphite + gold) ─ */
+  --bg-primary:       #f6f6f3;   /* warm near-white canvas */
+  --bg-secondary:     #ffffff;
+  --bg-tertiary:      #eeeeea;   /* light gray surface */
+  --bg-card:          #ffffff;
+  --bg-card-hover:    #fbfbf8;
+  --bg-glass:         rgba(255, 255, 255, 0.78);
+  --bg-input:         #ffffff;
+  --bg-sidebar:       #ffffff;
 
-  --border-primary:   rgba(48, 54, 61, 0.6);
-  --border-hover:     rgba(88, 96, 105, 0.5);
-  --border-accent:    rgba(59, 130, 246, 0.3);
+  --border-primary:   rgba(22, 24, 28, 0.10);
+  --border-hover:     rgba(22, 24, 28, 0.22);
+  --border-accent:    rgba(230, 184, 0, 0.45);
 
-  --text-primary:     #e6edf3;
-  --text-secondary:   #8b949e;
-  --text-tertiary:    #6e7681;
-  --text-inverse:     #06090f;
+  --text-primary:     #1a1c1f;   /* graphite ink */
+  --text-secondary:   #565a60;
+  --text-tertiary:    #8b8f96;
+  --text-inverse:     #ffffff;
 
-  /* ─ Brand & Accent Colors ─ */
-  --accent-blue:      #3b82f6;
-  --accent-blue-hover:#2563eb;
-  --accent-blue-glow: rgba(59, 130, 246, 0.15);
-  --accent-cyan:      #06b6d4;
-  --accent-purple:    #8b5cf6;
-  --accent-indigo:    #6366f1;
+  /* ─ Brand & Accent Colors ─
+     The workhorse interactive colour is graphite ink (kept under the legacy
+     --accent-blue* names so every component picks it up). Gold is the single
+     prestige accent, applied deliberately to verdict / KPI / brand moments. */
+  --accent-blue:      #26282c;   /* graphite — primary UI ink / buttons */
+  --accent-blue-hover:#000000;
+  --accent-blue-glow: rgba(230, 184, 0, 0.14);  /* gold-tinted active wash */
+  --accent-cyan:      #26282c;
+  --accent-purple:    #26282c;
+  --accent-indigo:    #26282c;
 
-  /* ─ Semantic Colors ─ */
-  --success:          #10b981;
-  --success-bg:       rgba(16, 185, 129, 0.1);
-  --warning:          #f59e0b;
-  --warning-bg:       rgba(245, 158, 11, 0.1);
-  --danger:           #f43f5e;
-  --danger-bg:        rgba(244, 63, 94, 0.1);
-  --info:             #3b82f6;
-  --info-bg:          rgba(59, 130, 246, 0.1);
+  /* ─ Prestige Gold (EY) ─ */
+  --accent-gold:      #E6B800;   /* signature gold */
+  --accent-gold-soft: #B88A00;   /* darker gold — readable as text on white */
+  --accent-gold-deep: #8a6a00;
+  --accent-amber:     #C99400;
+  --accent-gold-glow: rgba(230, 184, 0, 0.22);
+  --gold-ink:         #2b2200;   /* graphite-brown ink for text on gold */
+
+  /* ─ Semantic Colors · tuned for contrast on a light canvas ─ */
+  --success:          #1f8f4e;
+  --success-bg:       rgba(31, 143, 78, 0.10);
+  --warning:          #b4690e;
+  --warning-bg:       rgba(180, 105, 14, 0.12);
+  --danger:           #c02744;
+  --danger-bg:        rgba(192, 39, 68, 0.08);
+  --info:             #26282c;
+  --info-bg:          rgba(38, 40, 44, 0.06);
 
   /* ─ Gradient Presets ─ */
-  --gradient-brand:   linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #06b6d4 100%);
-  --gradient-card:    linear-gradient(145deg, rgba(22, 27, 34, 0.8) 0%, rgba(13, 17, 23, 0.6) 100%);
-  --gradient-glow:    radial-gradient(ellipse at 50% 0%, rgba(59, 130, 246, 0.12) 0%, transparent 60%);
-  --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  --gradient-danger:  linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+  --gradient-brand:   linear-gradient(135deg, #2a2c30 0%, #4a4d53 100%);  /* graphite */
+  --gradient-card:    linear-gradient(180deg, #ffffff 0%, #fcfcfa 100%);
+  --gradient-glow:    radial-gradient(ellipse at 50% 0%, rgba(230, 184, 0, 0.08) 0%, transparent 60%);
+  --gradient-success: linear-gradient(135deg, #1f8f4e 0%, #15703c 100%);
+  --gradient-danger:  linear-gradient(135deg, #c02744 0%, #9f1d36 100%);
+  /* Gold prestige sweep — the single moment of colour. */
+  --gradient-gold:    linear-gradient(135deg, #F4D261 0%, #E6B800 48%, #C99400 100%);
+  --gradient-prestige:linear-gradient(120deg, #C99400 0%, #E6B800 40%, #6b5a1a 100%);
+  --gradient-border:  linear-gradient(145deg, rgba(22, 24, 28, 0.12), rgba(22, 24, 28, 0.02) 45%, rgba(230, 184, 0, 0.18));
 
   /* ─ Typography ─ */
   --font-sans:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -79,12 +94,20 @@
   --radius-xl:        1.25rem;
   --radius-full:      9999px;
 
-  /* ─ Shadows ─ */
-  --shadow-sm:        0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md:        0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg:        0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.15), 0 0 40px rgba(59, 130, 246, 0.05);
-  --shadow-glow-purple: 0 0 20px rgba(139, 92, 246, 0.15);
+  /* ─ Shadows · soft, diffuse, no neon (light theme) ─ */
+  --shadow-sm:        0 1px 2px rgba(16, 18, 22, 0.06);
+  --shadow-md:        0 4px 14px rgba(16, 18, 22, 0.08);
+  --shadow-lg:        0 12px 34px rgba(16, 18, 22, 0.10);
+  --shadow-glow-blue: 0 6px 18px -8px rgba(16, 18, 22, 0.18);
+  --shadow-glow-purple: 0 6px 18px -8px rgba(16, 18, 22, 0.16);
+  --shadow-glow-gold: 0 8px 22px -8px rgba(230, 184, 0, 0.40);
+  /* Layered "floating" depth — soft ambient + contact shadow. */
+  --shadow-float:     0 1px 2px rgba(16, 18, 22, 0.04),
+                      0 10px 28px -12px rgba(16, 18, 22, 0.12);
+  --shadow-float-lg:  0 2px 4px rgba(16, 18, 22, 0.05),
+                      0 22px 48px -16px rgba(16, 18, 22, 0.16);
+  /* Crisp top hairline highlight on white surfaces. */
+  --highlight-top:    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 
   /* ─ Transitions ─ */
   --transition-fast:  150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -131,17 +154,34 @@ body {
   overflow-x: hidden;
 }
 
-/* Subtle grid background */
+/* Clean, airy light wash — a barely-there warm tint with the faintest gold
+   hint, top-right. No neon, no motion: enterprise-calm. Sits behind the shell
+   (.layout is z-index:1) so the content column reads on near-white. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  background-image:
-    linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
-  background-size: 60px 60px;
-  pointer-events: none;
   z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 100% 0%, rgba(230, 184, 0, 0.06) 0%, transparent 55%),
+    radial-gradient(80% 60% at 0% 0%, rgba(38, 40, 44, 0.035) 0%, transparent 60%),
+    linear-gradient(180deg, #f8f8f5 0%, var(--bg-primary) 40%);
+}
+
+/* Faint engineering grid that dissolves toward the bottom — subtle texture. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(22, 24, 28, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(22, 24, 28, 0.022) 1px, transparent 1px);
+  background-size: 72px 72px, 72px 72px;
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 45%, transparent 100%);
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 45%, transparent 100%);
 }
 
 /* ── Typography Utilities ───────────────────────────────────────── */
@@ -157,11 +197,11 @@ h3 { font-size: var(--text-2xl); font-weight: 600; }
 h4 { font-size: var(--text-xl); font-weight: 600; }
 
 a {
-  color: var(--accent-blue);
+  color: var(--text-primary);
   text-decoration: none;
   transition: color var(--transition-fast);
 }
-a:hover { color: var(--accent-blue-hover); }
+a:hover { color: var(--accent-gold-soft); }
 
 code, .mono {
   font-family: var(--font-mono);
@@ -179,6 +219,24 @@ code, .mono {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.text-gold { color: var(--accent-gold); }
+
+.text-gradient-gold {
+  background: var(--gradient-gold);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-prestige {
+  background: var(--gradient-prestige);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: prestigePan 8s ease-in-out infinite alternate;
 }
 
 /* ── Button System ──────────────────────────────────────────────── */
@@ -208,7 +266,7 @@ code, .mono {
 }
 .btn-primary:hover {
   background: var(--accent-blue-hover);
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.25);
+  box-shadow: 0 8px 20px -8px rgba(16, 18, 22, 0.35);
   transform: translateY(-1px);
 }
 
@@ -229,7 +287,7 @@ code, .mono {
 }
 .btn-ghost:hover {
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(22, 24, 28, 0.05);
 }
 
 .btn-danger {
@@ -238,8 +296,20 @@ code, .mono {
   border-color: var(--danger);
 }
 .btn-danger:hover {
-  background: #e11d48;
-  box-shadow: 0 0 20px rgba(244, 63, 94, 0.2);
+  background: #9f1d36;
+  box-shadow: 0 8px 18px -8px rgba(192, 39, 68, 0.35);
+}
+
+.btn-gold {
+  background: var(--gradient-gold);
+  color: var(--gold-ink);
+  border-color: rgba(255, 226, 122, 0.6);
+  font-weight: 700;
+  box-shadow: var(--shadow-glow-gold);
+}
+.btn-gold:hover {
+  box-shadow: 0 0 32px rgba(255, 210, 0, 0.34), 0 8px 22px -10px rgba(245, 158, 11, 0.5);
+  transform: translateY(-1px);
 }
 
 .btn-lg {
@@ -270,20 +340,27 @@ code, .mono {
 
 /* ── Card System ────────────────────────────────────────────────── */
 .card {
-  background: var(--bg-card);
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 18%),
+    var(--gradient-card);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: all var(--transition-base);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--highlight-top), var(--shadow-float);
+  transition: transform var(--transition-base), box-shadow var(--transition-base),
+              border-color var(--transition-base), background var(--transition-base);
 }
 
 .card-hover:hover {
   border-color: var(--border-hover);
-  background: var(--bg-card-hover);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 20%),
+    var(--bg-card-hover);
+  box-shadow: var(--highlight-top), var(--shadow-float-lg);
+  transform: translateY(-3px);
 }
 
 .card-glow {
@@ -300,7 +377,113 @@ code, .mono {
   transition: opacity var(--transition-base);
 }
 .card-glow:hover::before {
-  opacity: 0.15;
+  opacity: 0.18;
+}
+
+/* Gradient hairline border, drawn with a mask so it stays crisp at any radius. */
+.card-bordered {
+  position: relative;
+}
+.card-bordered::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gradient-border);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Gold prestige card — for the verdict / headline KPI hero. */
+.card-prestige {
+  border-color: rgba(255, 210, 0, 0.28);
+  box-shadow: var(--highlight-top), var(--shadow-float-lg), var(--shadow-glow-gold);
+}
+.card-prestige::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(145deg, rgba(255, 226, 122, 0.55), rgba(245, 158, 11, 0.15) 45%, rgba(139, 92, 246, 0.22));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── 3D Tilt (mouse-parallax) ───────────────────────────────────────
+   The appTilt directive writes --tilt-rx / --tilt-ry / --tilt-mx / --tilt-my.
+   Defaults keep the element flat when the directive is absent or at rest. */
+.tilt-3d {
+  --tilt-rx: 0deg;
+  --tilt-ry: 0deg;
+  --tilt-mx: 50%;
+  --tilt-my: 50%;
+  transform-style: preserve-3d;
+  transform: perspective(900px) rotateX(var(--tilt-rx)) rotateY(var(--tilt-ry));
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  will-change: transform;
+}
+.tilt-3d.is-tilting {
+  transition: box-shadow var(--transition-base);
+}
+.tilt-3d.is-tilting:hover {
+  box-shadow: var(--highlight-top), var(--shadow-float-lg);
+}
+/* A moving specular sheen that tracks the cursor across a tilted surface. */
+.tilt-3d .tilt-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(240px circle at var(--tilt-mx) var(--tilt-my),
+              rgba(230, 184, 0, 0.10), transparent 62%);
+  transition: opacity var(--transition-base);
+}
+.tilt-3d.is-tilting .tilt-sheen { opacity: 1; }
+/* Children opt into depth with .tilt-layer (pushed toward the viewer). */
+.tilt-layer { transform: translateZ(40px); transform-style: preserve-3d; }
+.tilt-layer-sm { transform: translateZ(20px); }
+
+/* ── Floating KPI tile ──────────────────────────────────────────────
+   Elevated stat tile with a sweeping top accent and lift on hover. */
+.kpi-tile {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 22%),
+    var(--gradient-card);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  box-shadow: var(--highlight-top), var(--shadow-float);
+  transition: transform var(--transition-base), box-shadow var(--transition-base),
+              border-color var(--transition-base);
+}
+.kpi-tile::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--gradient-brand);
+  opacity: 0.7;
+}
+.kpi-tile:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-hover);
+  box-shadow: var(--highlight-top), var(--shadow-float-lg);
+}
+.kpi-tile.kpi-gold::before { background: var(--gradient-gold); opacity: 0.95; }
+.kpi-tile.kpi-gold {
+  border-color: rgba(255, 210, 0, 0.26);
+  box-shadow: var(--highlight-top), var(--shadow-float), var(--shadow-glow-gold);
 }
 
 /* ── Input System ───────────────────────────────────────────────── */
@@ -393,6 +576,14 @@ code, .mono {
   border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
+.badge-gold {
+  background: rgba(255, 210, 0, 0.1);
+  color: var(--accent-gold-soft);
+  border: 1px solid rgba(255, 210, 0, 0.28);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 /* ── Layout Utilities ───────────────────────────────────────────── */
 .flex { display: flex; }
 .flex-col { flex-direction: column; }
@@ -465,6 +656,23 @@ code, .mono {
   50%      { box-shadow: 0 0 30px rgba(59, 130, 246, 0.2); }
 }
 
+/* Slow, organic drift for the aurora orbs — translate + scale + hue shift. */
+@keyframes auroraDrift {
+  0%   { transform: translate3d(-3%, -2%, 0) scale(1);    filter: blur(46px) saturate(1.15) hue-rotate(0deg); }
+  50%  { transform: translate3d(3%, 2%, 0) scale(1.08);   filter: blur(52px) saturate(1.25) hue-rotate(12deg); }
+  100% { transform: translate3d(2%, -3%, 0) scale(1.04);  filter: blur(48px) saturate(1.2) hue-rotate(-8deg); }
+}
+
+@keyframes prestigePan {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
+
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
 .animate-fade-in     { animation: fadeIn 0.3s ease-out; }
 .animate-fade-in-up  { animation: fadeInUp 0.4s ease-out; }
 .animate-fade-in-down{ animation: fadeInDown 0.4s ease-out; }
@@ -472,6 +680,20 @@ code, .mono {
 .animate-slide-left  { animation: slideInLeft 0.4s ease-out; }
 .animate-slide-right { animation: slideInRight 0.4s ease-out; }
 .animate-pulse       { animation: pulse 2s ease-in-out infinite; }
+.animate-float       { animation: floatY 6s ease-in-out infinite; }
+
+/* Respect users who prefer less motion: freeze the ambient animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  body::before { animation: none; }
+  .tilt-3d { transform: none !important; }
+}
 
 /* ── Scrollbar ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
@@ -494,7 +716,7 @@ code, .mono {
   background: linear-gradient(
     90deg,
     var(--bg-tertiary) 25%,
-    rgba(48, 54, 61, 0.4) 50%,
+    rgba(22, 24, 28, 0.06) 50%,
     var(--bg-tertiary) 75%
   );
   background-size: 400% 100%;

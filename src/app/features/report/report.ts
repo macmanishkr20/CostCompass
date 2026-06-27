@@ -9,16 +9,17 @@ import { EstimationService } from '../../core/services/estimation.service';
 import { LoadingSpinner } from '../../shared/components/loading-spinner/loading-spinner';
 import { ScoreBadge } from '../../shared/components/score-badge/score-badge';
 import { ChartCanvas } from '../../shared/components/chart-canvas/chart-canvas';
+import { TiltDirective } from '../../shared/directives/tilt.directive';
 
-// Shared dark-mode chart palette.
-const TEXT = '#cbd5e1';
-const MUTED = '#94a3b8';
-const GRID = 'rgba(148, 163, 184, 0.12)';
-const SERIES = ['#6366f1', '#22d3ee', '#a855f7', '#f59e0b'];
+// Shared light-theme chart palette (graphite ink + gold-led series).
+const TEXT = '#3a3d42';
+const MUTED = '#6b6f76';
+const GRID = 'rgba(22, 24, 28, 0.10)';
+const SERIES = ['#E6B800', '#26282c', '#B88A00', '#9aa0a8'];
 
 @Component({
   selector: 'app-report',
-  imports: [CurrencyPipe, DatePipe, DecimalPipe, RouterLink, LoadingSpinner, ScoreBadge, ChartCanvas],
+  imports: [CurrencyPipe, DatePipe, DecimalPipe, RouterLink, LoadingSpinner, ScoreBadge, ChartCanvas, TiltDirective],
   templateUrl: './report.html',
   styleUrl: './report.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -31,6 +32,22 @@ export class Report {
   protected readonly estimation = toSignal(
     this.route.paramMap.pipe(switchMap((p) => this.estimationSvc.getById(p.get('id') ?? ''))),
   );
+
+  /**
+   * Splits the analysed capabilities into AI-led vs standard-software-led, so a
+   * "Hybrid" verdict can name exactly which features go which way instead of
+   * leaving "hybrid" as a vague middle. Empty unless at least one capability
+   * carries the recommendedApproach tag (older estimations omit it).
+   */
+  protected readonly capabilitySplit = computed(() => {
+    const items = this.estimation()?.feasibility.useCaseAnalysis ?? [];
+    const tagged = items.filter((u) => u.recommendedApproach);
+    return {
+      hasSplit: tagged.length > 0,
+      ai: tagged.filter((u) => u.recommendedApproach === 'ai'),
+      standard: tagged.filter((u) => u.recommendedApproach === 'standard'),
+    };
+  });
 
   /** Server-composed markdown rendered to safe HTML for the report body. */
   protected readonly renderedReport = computed(() => {
@@ -56,7 +73,7 @@ export class Report {
               c.maintenance.annualCost,
             ],
             backgroundColor: SERIES,
-            borderColor: 'rgba(15, 23, 42, 0.55)',
+            borderColor: '#ffffff',
             borderWidth: 2,
           },
         ],
@@ -92,7 +109,7 @@ export class Report {
             label: 'Cumulative net',
             data: roi.curve.map((p) => p.cumulativeNet),
             borderColor: SERIES[0],
-            backgroundColor: 'rgba(99, 102, 241, 0.15)',
+            backgroundColor: 'rgba(230, 184, 0, 0.14)',
             fill: true,
             tension: 0.3,
             pointRadius: 3,
@@ -168,6 +185,90 @@ export class Report {
         return 'badge-warning';
       default:
         return 'badge-info';
+    }
+  }
+
+  /** Human label for the delivery platform's cost model. */
+  protected costModelLabel(model: string): string {
+    switch (model) {
+      case 'licensing':
+        return 'Licensing-led · per seat';
+      case 'capex':
+        return 'Capex-led · amortized + ops';
+      case 'consumption':
+        return 'Consumption · metered';
+      default:
+        return model;
+    }
+  }
+
+  /** Short human label for a delivery-platform key (used for alternatives). */
+  protected platformLabel(platform: string): string {
+    switch (platform) {
+      case 'azure_paas':
+        return 'Azure PaaS';
+      case 'aws':
+        return 'AWS';
+      case 'gcp':
+        return 'Google Cloud';
+      case 'm365_copilot':
+        return 'Microsoft 365 + Copilot';
+      case 'on_prem':
+        return 'On-premises / private cloud';
+      default:
+        return platform;
+    }
+  }
+
+  /** Human label for an agentic node / specialist (used in the agent-run card). */
+  protected agentLabel(node: string): string {
+    switch (node) {
+      case 'intake':
+        return 'Intake';
+      case 'solution_architect':
+        return 'Architect';
+      case 'feasibility_analyst':
+        return 'Feasibility';
+      case 'cost_engineer':
+        return 'Cost';
+      case 'comparison_analyst':
+        return 'Comparison';
+      case 'roi_analyst':
+        return 'ROI';
+      case 'report_synthesizer':
+        return 'Report';
+      case 'risk_critic':
+        return 'Risk critic';
+      case 'supervisor':
+        return 'Supervisor';
+      default:
+        return node;
+    }
+  }
+
+  /** How the delivery platform was chosen — drives the provenance chip. */
+  protected solutionSourceLabel(source: string): string {
+    switch (source) {
+      case 'agent':
+        return 'ReAct agent';
+      case 'explicit':
+        return 'Your choice';
+      case 'heuristic':
+        return 'Heuristic';
+      default:
+        return source;
+    }
+  }
+
+  /** Human label for how an Azure unit price was sourced. */
+  protected priceSourceLabel(src: string): string {
+    switch (src) {
+      case 'live':
+        return 'live retail price';
+      case 'fallback':
+        return 'fallback price';
+      default:
+        return 'baseline estimate';
     }
   }
 }

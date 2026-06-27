@@ -36,6 +36,12 @@ export const routes: Routes = [
         title: 'Report · CostCompass',
       },
       {
+        path: 'estimate/:id/summary',
+        loadComponent: () =>
+          import('./features/leadership-summary/leadership-summary').then((m) => m.LeadershipSummary),
+        title: 'Leadership Summary · CostCompass',
+      },
+      {
         path: 'history',
         loadComponent: () => import('./features/history/history').then((m) => m.History),
         title: 'History · CostCompass',

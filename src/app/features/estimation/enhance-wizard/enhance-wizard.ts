@@ -2,9 +2,16 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { CurrencyPipe } from '@angular/common';
 import { EstimationService } from '../../../core/services/estimation.service';
 import { GithubAnalyzerService } from '../../../core/services/github-analyzer.service';
-import { AITaskType, ProjectInput, ProjectScale } from '../../../core/models/project.model';
+import {
+  AITaskType,
+  DeliveryPlatform,
+  ProjectInput,
+  ProjectScale,
+  REGION_OPTIONS,
+} from '../../../core/models/project.model';
 import { RepoAnalysis, SuggestedUseCase } from '../../../core/models/github.model';
 
 interface StepDef {
@@ -14,7 +21,7 @@ interface StepDef {
 
 @Component({
   selector: 'app-enhance-wizard',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, CurrencyPipe],
   templateUrl: './enhance-wizard.html',
   styleUrl: './enhance-wizard.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,6 +37,7 @@ export class EnhanceWizard {
     { key: 'stack', label: 'Review stack' },
     { key: 'useCases', label: 'Enhancement use cases' },
     { key: 'volume', label: 'Volume & scale' },
+    { key: 'assumptions', label: 'Assumptions' },
     { key: 'review', label: 'Review' },
   ];
 
@@ -65,6 +73,9 @@ export class EnhanceWizard {
     { value: 'translation', label: 'Translation' },
     { value: 'recommendation', label: 'Recommendation' },
     { value: 'anomaly_detection', label: 'Anomaly detection' },
+    { value: 'rules_workflow', label: 'Business rules / workflow (no AI)' },
+    { value: 'crud_lookup', label: 'Data lookup / CRUD (no AI)' },
+    { value: 'threshold_alerting', label: 'Threshold alerting / monitoring (no AI)' },
   ];
 
   protected readonly priorityOptions = [
@@ -80,6 +91,20 @@ export class EnhanceWizard {
     { value: 'edge', label: 'Edge' },
   ];
 
+  // Delivery platform whose cost model the estimate is built against. Blank = let
+  // the engine infer it from the detected hosting platform / provider / topics.
+  protected readonly deliveryPlatformOptions: { value: '' | DeliveryPlatform; label: string }[] = [
+    { value: '', label: 'Auto-detect from inputs' },
+    { value: 'azure_paas', label: 'Azure PaaS — consumption' },
+    { value: 'aws', label: 'AWS — consumption' },
+    { value: 'gcp', label: 'Google Cloud — consumption' },
+    { value: 'm365_copilot', label: 'Microsoft 365 + Copilot — per seat' },
+    { value: 'on_prem', label: 'On-premises / private cloud — capex' },
+  ];
+
+  // Azure regions the extra-service estimate is priced against (ARM names).
+  protected readonly regionOptions = REGION_OPTIONS;
+
   protected readonly form = this.fb.nonNullable.group({
     repoUrl: ['', Validators.required],
     token: [''],
@@ -94,6 +119,10 @@ export class EnhanceWizard {
     aiUseCases: this.fb.array([this.useCaseGroup()]),
     preferredLLMProvider: ['Azure OpenAI'],
     deploymentModel: ['cloud'],
+    deliveryPlatform: ['' as '' | DeliveryPlatform],
+    azureRegion: ['eastus'],
+    azureOpenAIRegion: ['eastus'],
+    azureSearchRegion: ['eastus'],
     complianceRequirements: [''],
     budgetCeiling: [null as number | null],
     budgetCurrency: ['USD'],
@@ -102,6 +131,14 @@ export class EnhanceWizard {
     dataVolumeGB: [30],
     growthRatePercent: [20],
     peakLoadPattern: ['Business hours'],
+    // Overridable rate card / resourcing dials (default to platform baselines).
+    devHourlyRate: [115],
+    maintHourlyRate: [95],
+    effectiveHoursPerWeek: [32],
+    // ROI benefit dials: fully-loaded rate of the offset worker and the share
+    // of calls AI handles end-to-end. Drive the per-call dollar value.
+    loadedHourlyRate: [75],
+    automationRatePercent: [70],
   });
 
   protected get aiUseCases(): FormArray {
@@ -114,7 +151,27 @@ export class EnhanceWizard {
       taskType: [(seed?.taskType ?? 'rag_qa') as AITaskType],
       description: [seed?.rationale ?? ''],
       priority: [seed?.priority ?? 'must_have'],
+      // Blank = use the task-type's default minutes-of-manual-work saved.
+      minutesPerCall: [null as number | null],
     });
+  }
+
+  /** Catalog default minutes-saved-per-call for a task type (placeholder hinting). */
+  protected defaultMinutesPerCall(taskType: AITaskType): number {
+    return this.estimation.defaultMinutesPerCall(taskType);
+  }
+
+  /** Human label for a selected delivery platform (Review step). */
+  protected deliveryPlatformLabel(value: string): string {
+    return this.deliveryPlatformOptions.find((o) => o.value === value)?.label ?? value;
+  }
+
+  /** Live preview of the derived $/call from the current benefit dials. */
+  protected previewValuePerCall(taskType: AITaskType, minutes: number | null): number {
+    const mins = minutes ?? this.estimation.defaultMinutesPerCall(taskType);
+    const loaded = this.form.controls.loadedHourlyRate.value ?? 75;
+    const automation = this.form.controls.automationRatePercent.value ?? 70;
+    return this.estimation.deriveValuePerCall(mins, loaded, automation);
   }
 
   protected addUseCase(): void {
@@ -243,16 +300,21 @@ export class EnhanceWizard {
         description: u.description,
         priority: u.priority as 'must_have' | 'nice_to_have' | 'exploratory',
         linkedFeatureIds: [],
+        minutesPerCall: u.minutesPerCall ?? undefined,
       })),
       technicalPreferences: {
         preferredLLMProvider: v.preferredLLMProvider,
         deploymentModel: v.deploymentModel as 'cloud' | 'hybrid' | 'edge',
+        deliveryPlatform: v.deliveryPlatform || undefined,
         existingInfra: v.hostingPlatform,
         complianceRequirements: v.complianceRequirements
           ? v.complianceRequirements.split(',').map((s) => s.trim()).filter(Boolean)
           : [],
         budgetCeiling: v.budgetCeiling ?? undefined,
         budgetCurrency: v.budgetCurrency,
+        azureRegion: v.azureRegion,
+        azureOpenAIRegion: v.azureOpenAIRegion,
+        azureSearchRegion: v.azureSearchRegion,
       },
       volumeAndScale: {
         expectedDailyUsers: v.expectedDailyUsers,
@@ -260,6 +322,13 @@ export class EnhanceWizard {
         dataVolumeGB: v.dataVolumeGB,
         peakLoadPattern: v.peakLoadPattern,
         growthRatePercent: v.growthRatePercent,
+      },
+      costAssumptions: {
+        devHourlyRate: v.devHourlyRate ?? 115,
+        maintHourlyRate: v.maintHourlyRate ?? 95,
+        effectiveHoursPerWeek: v.effectiveHoursPerWeek ?? 32,
+        loadedHourlyRate: v.loadedHourlyRate ?? 75,
+        automationRatePercent: v.automationRatePercent ?? 70,
       },
       repoUrl: a.htmlUrl,
       repoBranch: a.branch,

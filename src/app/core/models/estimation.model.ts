@@ -1,6 +1,6 @@
 /* ── Estimation & Report Models ─────────────────────────────────── */
 
-import { CurrentArchitecture, ProjectType } from './project.model';
+import { CurrentArchitecture, DeliveryPlatform, ProjectType } from './project.model';
 
 export interface Estimation {
   id: string;
@@ -9,6 +9,10 @@ export interface Estimation {
   projectType: ProjectType;
   industryDomain?: string;
   feasibility: FeasibilityResult;
+  /** The decisive call. Optional for estimates persisted before it existed. */
+  verdict?: Verdict;
+  /** How much to trust these figures. Optional for the same reason. */
+  confidence?: ConfidenceAssessment;
   costBreakdown: CostBreakdown;
   tokenProjection: TokenProjection;
   comparison: AIvsStandardComparison;
@@ -19,6 +23,114 @@ export interface Estimation {
   generatedAt: string;
   /** Present only for enhancement-mode estimates (existing-app analysis). */
   repoContext?: RepoContext;
+  /** How the delivery platform was chosen and why. Optional for older records. */
+  solutionProposal?: SolutionProposal;
+  /** Multi-agent ReAct orchestration trace. Present only for AGENTIC_MODE runs. */
+  agentRun?: AgentRun;
+}
+
+/* ── Agentic run (multi-agent ReAct orchestration) ──── */
+
+/** One entry in the multi-agent reasoning transcript. */
+export interface AgentStep {
+  agent: string;
+  /** ReAct/orchestration phase. */
+  kind: 'thought' | 'action' | 'observation' | 'decision' | 'route' | 'critique' | 'fallback' | string;
+  content: string;
+}
+
+/** A consistency issue the risk-critic raised about the draft estimate. */
+export interface AgentCritique {
+  issue: string;
+  severity: 'low' | 'medium' | 'high';
+  target: string;
+  resolved: boolean;
+}
+
+/** An audited deterministic computation an agent invoked (SHA-256 of its output). */
+export interface ToolCall {
+  agent: string;
+  tool: string;
+  outputHash: string;
+}
+
+/**
+ * How a multi-agent run unfolded: the supervisor's path through the specialist
+ * ReAct agents, the full reasoning transcript, the critic's findings, and the
+ * hashed tool ledger. `integrityVerified` records whether the agents' own tool
+ * outputs matched the strict deterministic recompute that produced the final
+ * numbers — so every figure stays code-computed and auditable. Present only for
+ * estimates produced with AGENTIC_MODE on; optional for every other record.
+ */
+export interface AgentRun {
+  mode: 'agentic' | 'deterministic';
+  supervisorPath: string[];
+  steps: AgentStep[];
+  critiques: AgentCritique[];
+  toolLedger: ToolCall[];
+  revisions: number;
+  integrityVerified: boolean;
+  llmUsed: boolean;
+}
+
+/* ── Solution architecture proposal (ReAct agent) ──── */
+
+/** A platform the architect considered but rejected, and why. */
+export interface SolutionAlternative {
+  platform: DeliveryPlatform;
+  whyNot: string;
+}
+
+/**
+ * The recommended delivery platform plus the architect's reasoning. Produced by
+ * the backend ReAct solution-architect node (LLM when configured, else a
+ * deterministic heuristic). The LLM only chooses a platform label and explains
+ * it — the deterministic engine still computes every cost from the resolved
+ * platform.
+ */
+export interface SolutionProposal {
+  recommendedPlatform: DeliveryPlatform;
+  platformLabel: string;
+  costModel: string;
+  rationale: string;
+  alternatives: SolutionAlternative[];
+  /** Thought/Action/Observation trace; empty on the heuristic path. */
+  reasoningSteps: string[];
+  source: 'agent' | 'heuristic' | 'explicit';
+}
+
+/* ── Verdict (the canonical, decisive call) ──── */
+
+/**
+ * The platform's single, unambiguous recommendation — willing to say no.
+ * Derived from the feasibility archetype and the AI-vs-standard comparison.
+ */
+export interface Verdict {
+  decision: 'build_with_ai' | 'hybrid' | 'do_not_use_ai';
+  headline: string; // Boardroom-ready phrasing of the call
+  oneLiner: string; // The one-line why
+  disposition: 'go' | 'caution' | 'stop'; // UI/copy tone
+  recommendAi: boolean;
+}
+
+/* ── Confidence (deterministic self-assessment) ──── */
+
+export interface ConfidenceFactor {
+  label: string;
+  detail: string;
+  impact: 'positive' | 'neutral' | 'negative';
+}
+
+/**
+ * How much weight to place on the estimate, computed — not guessed — from input
+ * completeness, how decisively the score clears the decision thresholds, and how
+ * grounded the estimate is.
+ */
+export interface ConfidenceAssessment {
+  level: 'low' | 'medium' | 'high';
+  score: number; // 0–100
+  rationale: string;
+  factors: ConfidenceFactor[];
 }
 
 /* ── ROI Projection (deterministic payback & 3-year value) ──── */
@@ -45,6 +157,10 @@ export interface ValueDriver {
   valuePerCall: number;
   annualCalls: number;
   annualValue: number;
+  /** Transparent benefit basis (absent when a flat valuePerCall override was used). */
+  minutesPerCall?: number;
+  loadedHourlyRate?: number;
+  automationRatePercent?: number;
 }
 
 /** Snapshot of the analyzed repository carried into the report. */
@@ -104,6 +220,9 @@ export interface UseCaseAnalysis {
   justification: string;
   recommendedModel: string;
   complexity: 'low' | 'medium' | 'high';
+  // Per-capability lean so "Hybrid" can name which features go AI vs standard.
+  // Optional for backward-compat with estimations persisted before this field existed.
+  recommendedApproach?: 'ai' | 'standard';
 }
 
 export interface RiskItem {
@@ -134,14 +253,35 @@ export interface InfrastructureCost {
   monthlyCost: number;
   annualCost: number;
   services: AzureServiceCost[];
+  // Delivery-platform metadata. Optional for backward-compat with estimations
+  // persisted before the platform dimension existed (those are Azure PaaS).
+  platform?: DeliveryPlatform;
+  platformLabel?: string;
+  // 'consumption' (metered compute), 'licensing' (per-seat) or 'capex' (amortized).
+  costModel?: string;
+  // Whether AI token spend is metered separately (consumption/capex) or bundled
+  // into a per-seat licence (M365/Copilot). When false the AI-tokens line is $0.
+  metersTokens?: boolean;
+  notes?: string[];
 }
 
 export interface AzureServiceCost {
   serviceName: string;
+  category: string;              // Compute, AI, Data & Storage, Security, …
   tier: string;
+  region: string;               // ARM region this service is priced in
+  quantity: number;             // deterministic units consumed per month
+  unit: string;                 // what a unit is (hour, GB/mo, 1M tokens, …)
+  unitPrice: number;            // USD per unit
   monthlyCost: number;
+  // 'live' = priced from the Azure Retail Prices API; 'fallback' = metered
+  // service the API couldn't reach; 'estimate' = deterministic baseline.
+  priceSource: 'live' | 'fallback' | 'estimate';
+  // Azure OpenAI tokens are already counted in the AI-tokens line, so its row
+  // is shown for completeness but excluded from the infra subtotal.
+  includedInTotal: boolean;
   details: string;
-  azurePricingUrl?: string;      // Link to Azure Price Calculator
+  azurePricingUrl?: string;      // Deep link to the Azure pricing calculator
 }
 
 export interface TokenCost {
